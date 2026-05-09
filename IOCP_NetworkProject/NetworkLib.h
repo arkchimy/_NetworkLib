@@ -22,8 +22,11 @@
 #pragma comment(lib, "WS2_32.lib")
 #pragma comment(lib, "Mswsock.lib")
 
+
 namespace network
 {
+    using seqAndIdx = unsigned long long; 
+
     enum config
     {
         WORKER_THREAD_CNT = 5,
@@ -38,8 +41,10 @@ namespace network
       private:
         void workerThread();
 
-        bool stackSessionIdx_Pop(short& out);
-        void stackSessionIdx_Push(const short input);
+
+
+        bool stackSessionIdx_Pop(seqAndIdx& out);
+        void stackSessionIdx_Push(const seqAndIdx& input);
 
       private:
         std::thread mWorkerThreads[WORKER_THREAD_CNT];
@@ -48,7 +53,7 @@ namespace network
         HANDLE mHcp; // iocpHandle
         Session mSessions[SESSION_MAX_CNT];
 
-        std::stack<short> mStackSessionIdx;
+        std::stack<seqAndIdx> mStackSessionIdx;
         std::mutex mStackMutex;
     };
 } // namespace network

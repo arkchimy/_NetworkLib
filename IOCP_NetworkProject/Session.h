@@ -21,26 +21,31 @@ namespace network
     };
     class MyOverlapped : public OVERLAPPED
     {
-    public:
+      public:
+        MyOverlapped(complete mode) : mMode(mode) {}
         inline complete GetMode() const {  return mMode; }
-      private:
+      protected:
         complete mMode = NONE;
     };  
     class AcceptOv : public MyOverlapped
     {
-
+      public:
+        AcceptOv() : MyOverlapped(COMPLETE_ACCEPT) {}
     };
     class RecvOv : public MyOverlapped
     {
-  
+      public:
+        RecvOv() : MyOverlapped(COMPLETE_RECV) {}
     };
     class SendOv : public MyOverlapped
     {
-     
+      public:
+        SendOv() : MyOverlapped(COMPLETE_SEND) {}
     };
     class ReleaseOv : public MyOverlapped
     {
-       
+      public:
+        ReleaseOv() : MyOverlapped(COMPLETE_RELEASE) {}
     };
     class Session
     {

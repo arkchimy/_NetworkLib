@@ -23,14 +23,14 @@ network::NetworkLib::NetworkLib()
     RT_ASSERT(retval != SOCKET_ERROR);
 
     mHcp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0);
-    CreateIoCompletionPort((HANDLE)mListenSock,mHcp, 0, 0);
-    short idx;
+    CreateIoCompletionPort((HANDLE)mListenSock, mHcp, 0, 0);
+    seqAndIdx idx;
     for (int i = 0; i < WORKER_THREAD_CNT; ++i)
     {
         mWorkerThreads[i] = std::thread(&NetworkLib::workerThread, this);
         RT_ASSERT(stackSessionIdx_Pop(idx) != false);
 
-        Session &session = mSessions[idx]; 
+        Session &session = mSessions[idx];
         session.mSock = socket(AF_INET, SOCK_STREAM, 0);
 
         /*
@@ -53,19 +53,17 @@ network::NetworkLib::NetworkLib()
                      sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, &recvByte, &session.mAcceptOv); // 주석
         }
     }
-
 }
 
 void network::NetworkLib::workerThread()
 {
     // 벤치마크
-    // GetQueuedCompletionStatusEx 한번에 뽑는다? 
+    // GetQueuedCompletionStatusEx 한번에 뽑는다?
     while (true)
     {
         DWORD trandfferd = 0;
         ULONG_PTR key = 0;
         OVERLAPPED *overlapped = nullptr;
-        
 
         GetQueuedCompletionStatus(mHcp, &trandfferd, &key, &overlapped, INFINITE);
         {
@@ -75,19 +73,29 @@ void network::NetworkLib::workerThread()
                 break;
             }
             MyOverlapped *ov = static_cast<MyOverlapped *>(overlapped);
-            //TODO : key가 nullptr 일 경우가 존재함.
-            Session& session = *reinterpret_cast<Session *>(key);
             switch (ov->GetMode())
             {
             case COMPLETE_ACCEPT:
+            {
 
-                break;
+            }
+            break;
+
             case COMPLETE_RECV:
-                break;
+            {
+                Session &session = *reinterpret_cast<Session *>(key);
+            }
+            break;
             case COMPLETE_SEND:
-                break;
+            {
+                Session &session = *reinterpret_cast<Session *>(key);
+            }
+            break;
             case COMPLETE_RELEASE:
-                break;
+            {
+                Session &session = *reinterpret_cast<Session *>(key);
+            }
+            break;
             default:
                 RT_ASSERT(FALSE);
             }
@@ -95,7 +103,7 @@ void network::NetworkLib::workerThread()
     }
 }
 
-bool network::NetworkLib::stackSessionIdx_Pop(short &out)
+bool network::NetworkLib::stackSessionIdx_Pop(seqAndIdx& out)
 {
     std::lock_guard lock(mStackMutex);
     if (mStackSessionIdx.empty())
@@ -106,11 +114,10 @@ bool network::NetworkLib::stackSessionIdx_Pop(short &out)
     return true;
 }
 
-void network::NetworkLib::stackSessionIdx_Push(const short input)
+void network::NetworkLib::stackSessionIdx_Push(const seqAndIdx& input)
 {
     std::lock_guard lock(mStackMutex);
     mStackSessionIdx.push(input);
-
 }
 /*
   AcceptEx 매개변수
