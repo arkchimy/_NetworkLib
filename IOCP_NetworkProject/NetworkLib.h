@@ -1,39 +1,54 @@
 #pragma once
 
 #ifndef WIN32_LEAN_AND_MEAN
-	#define WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
 #endif
 
 #ifndef RT_ASSERT
 #define RT_ASSERT(x) \
     if (!(x))        \
-    __debugbreak();
+        __debugbreak();
 #endif
 
-#include <Windows.h>
+
 #include <WS2tcpip.h>
+#include <Windows.h>
 #include <thread>
+#include <mutex>
+#include <stack>
+#include <Mswsock.h>
+#include "Session.h"
 
 #pragma comment(lib, "WS2_32.lib")
-
+#pragma comment(lib, "Mswsock.lib")
 
 namespace network
 {
-	enum eConfig :unsigned int
-	{
-		WORKER_THREAD_CNT = 5,
-	};
-	class NetworkLib
-	{
+    enum config
+    {
+        WORKER_THREAD_CNT = 5,
+        SESSION_MAX_CNT = 7000,
+    };
+    class NetworkLib
+    {
+      public:
+        NetworkLib();
+        virtual ~NetworkLib() = default;
 
-	private:
-		NetworkLib();
-		void WorkerThread();
+      private:
+        void workerThread();
 
-		std::thread mWorkerThreads[WORKER_THREAD_CNT];
+        bool stackSessionIdx_Pop(short& out);
+        void stackSessionIdx_Push(const short input);
+
+      private:
+        std::thread mWorkerThreads[WORKER_THREAD_CNT];
         SOCKET mListenSock;
-		// iocpHandle
-        HANDLE mHcp;
-	};
-}
 
+        HANDLE mHcp; // iocpHandle
+        Session mSessions[SESSION_MAX_CNT];
+
+        std::stack<short> mStackSessionIdx;
+        std::mutex mStackMutex;
+    };
+} // namespace network
