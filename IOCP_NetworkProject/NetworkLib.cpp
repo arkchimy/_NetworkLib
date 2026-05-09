@@ -23,7 +23,7 @@ network::NetworkLib::NetworkLib()
     RT_ASSERT(retval != SOCKET_ERROR);
 
     mHcp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0);
-    
+    CreateIoCompletionPort((HANDLE)mListenSock,mHcp, 0, 0);
     short idx;
     for (int i = 0; i < WORKER_THREAD_CNT; ++i)
     {

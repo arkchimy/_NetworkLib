@@ -6,10 +6,11 @@
 #include <WS2tcpip.h>
 #include <Windows.h>
 
-using ull = unsigned long long;
+
 
 namespace network
 {
+    using ull = unsigned long long;
     enum complete
     {
         COMPLETE_ACCEPT,
@@ -49,11 +50,11 @@ namespace network
         SOCKET mSock;
         ull mSessionID;
 
-        char mAcceptBuf[sizeof(SOCKADDR_IN) + 16 * 2];
+        char mAcceptBuf[(sizeof(SOCKADDR_IN) + 16) * 2];
 
         AcceptOv mAcceptOv;
-        RecvOv mSendOv;
-        SendOv mRecvOv;
+        RecvOv mRecvOv;
+        SendOv mSendOv;
         ReleaseOv mReleaseOv;
 
         BYTE mIOcnt;
@@ -63,7 +64,7 @@ namespace network
 
 /*
    // INFO : AcceptBuffer의 설명
-   -------------   char mAcceptBuf[sizeof(SOCKADDR_IN) + 16 * 2];      -------------
+   -------------   char mAcceptBuf[(sizeof(SOCKADDR_IN) + 16)  * 2];      -------------
   //AcceptEx의 buffer는 두 역할입니다:                                                                                      - 로컬 주소 저장
   //- 원격(클라이언트) 주소 저장
   //크기는 sizeof(SOCKADDR_IN) 만으로는 부족합니다. AcceptEx가 내부적으로 +16바이트 여유를 요구합니다
