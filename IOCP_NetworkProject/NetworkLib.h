@@ -5,9 +5,7 @@
 #endif
 
 #ifndef RT_ASSERT
-#define RT_ASSERT(x) \
-    if (!(x))        \
-        __debugbreak();
+#define RT_ASSERT(x) if (!(x)) __debugbreak();
 #endif
 
 
@@ -25,8 +23,6 @@
 
 namespace network
 {
-    using seqAndIdx = unsigned long long; 
-
     enum config
     {
         WORKER_THREAD_CNT = 5,
@@ -38,14 +34,22 @@ namespace network
         NetworkLib();
         virtual ~NetworkLib() = default;
 
+      protected:
+        virtual void onAccept(const SeqAndIdx& sessionID) = 0;
+        virtual void onRecv() = 0;
+        virtual void onSend() = 0;
+        virtual void onRelease() = 0;
+
       private:
         void workerThread();
 
+        bool stackSessionIdx_Pop(sessionStackDataType& out);
+        void stackSessionIdx_Push(const sessionStackDataType& input);
 
+        void registerAcceptEx();
 
-        bool stackSessionIdx_Pop(seqAndIdx& out);
-        void stackSessionIdx_Push(const seqAndIdx& input);
-
+        void completeAcceptEx(const MyOverlapped& ov);
+        
       private:
         std::thread mWorkerThreads[WORKER_THREAD_CNT];
         SOCKET mListenSock;
@@ -53,7 +57,9 @@ namespace network
         HANDLE mHcp; // iocpHandle
         Session mSessions[SESSION_MAX_CNT];
 
-        std::stack<seqAndIdx> mStackSessionIdx;
+        std::stack<sessionStackDataType> mStackSessionIdx;
         std::mutex mStackMutex;
+
+        volatile ull mSeqID = -1;
     };
 } // namespace network

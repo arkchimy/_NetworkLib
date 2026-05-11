@@ -11,6 +11,20 @@
 namespace network
 {
     using ull = unsigned long long;
+    using sessionStackDataType = unsigned long long;
+    struct SeqAndIdx
+    {
+        union
+        {
+            struct
+            {
+                ull Idx : 17; // sessions 의 idx
+                ull Seq : 47; // session의 고유성을 보장하기위한 seqNumber
+            };
+            ull Value;
+        };
+    };
+
     enum complete
     {
         COMPLETE_ACCEPT,
@@ -51,18 +65,21 @@ namespace network
     {
       friend class NetworkLib;
 
+      public:
+      Session();
       private:
         SOCKET mSock;
-        ull mSessionID;
+        SeqAndIdx mSessionID;
 
-        char mAcceptBuf[(sizeof(SOCKADDR_IN) + 16) * 2];
+        char mAcceptBuf[(sizeof(SOCKADDR_IN) + 16) * 2]{};
 
         AcceptOv mAcceptOv;
         RecvOv mRecvOv;
         SendOv mSendOv;
         ReleaseOv mReleaseOv;
 
-        BYTE mIOcnt;
+        //TODO : Interlock계열의 크기에따른 성능변화 측정.
+        LONG mIOcnt;
     };
 
 } // namespace network
