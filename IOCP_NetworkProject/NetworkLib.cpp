@@ -20,21 +20,26 @@ namespace network
         addr.sin_port = htons(CONFIG_SERVER_PORT);
         addr.sin_addr.S_un.S_addr = htonl(CONFIG_SERVER_ADDR);
 
-        int retval = bind(mListenSock, reinterpret_cast<const sockaddr *>(&addr), sizeof(addr));
-        RT_ASSERT(retval != SOCKET_ERROR);
-
-        retval = listen(mListenSock, SOMAXCONN_HINT(65535));
-        RT_ASSERT(retval != SOCKET_ERROR);
-
-        // TODO : ZeroCpy라면 CONFIG_ZERO_COPY = 1 바꿀것
         if (CONFIG_ZERO_COPY)
         {
             char optval = 0;
             setsockopt(mListenSock, SOL_SOCKET, SO_SNDBUF, &optval, 0);
         }
 
-        mHcp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0);
-        CreateIoCompletionPort((HANDLE)mListenSock, mHcp, 0, 0);
+        int retval = bind(mListenSock, reinterpret_cast<const sockaddr *>(&addr), sizeof(addr));
+        RT_ASSERT(retval != SOCKET_ERROR);
+
+        retval = listen(mListenSock, SOMAXCONN_HINT(65535));
+        RT_ASSERT(retval != SOCKET_ERROR);
+
+
+
+        // CreateIoCompletionPort 함수가 실패하면 반환 값은 NULL입니다
+        mHcp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, CONFIG_CONCURRENT_THREAD_CNT);
+        RT_ASSERT(mHcp != nullptr);
+
+        HANDLE bSucces = CreateIoCompletionPort((HANDLE)mListenSock, mHcp, 0, 0);
+        RT_ASSERT(bSucces != nullptr);
 
         for (int idx = 0; idx < CONFIG_WORKER_THREAD_CNT; ++idx)
         {

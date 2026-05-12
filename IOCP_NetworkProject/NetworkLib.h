@@ -25,6 +25,7 @@ namespace network
 {
     enum eNetConfig
     {
+        CONFIG_CONCURRENT_THREAD_CNT = 0,
         CONFIG_WORKER_THREAD_CNT = 5,
         CONFIG_RINGBUFFER_SIZE = 2048,
         CONFIG_SESSION_MAX = 7000,

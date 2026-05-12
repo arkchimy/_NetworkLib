@@ -37,10 +37,6 @@ namespace utility
 
     ringBufferSize RingBuffer::GetFreeSize(const char *f, const char *r) const
     {
-        if (f == mBegin && f <= r)
-        {
-            return ringBufferSize(mEnd - r - 1);
-        }
         return f <= r ? ringBufferSize((mEnd - r) + (f - mBegin) - 1)
                       : ringBufferSize(f - r - 1);
     }
@@ -176,10 +172,6 @@ namespace utility
 
     ringBufferSize RingBuffer::DirectDequeueSize(const char *f, const char *r) const
     {
-        if (f > r && r == mBegin)
-        {
-            return ringBufferSize(mEnd - f - 1);
-        }
         return f <= r ? ringBufferSize(r - f) : ringBufferSize(mEnd - f);
     }
 
