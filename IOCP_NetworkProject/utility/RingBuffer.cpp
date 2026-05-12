@@ -38,7 +38,9 @@ namespace utility
     ringBufferSize RingBuffer::GetFreeSize(const char *f, const char *r) const
     {
         if (f == mBegin && f <= r)
+        {
             return ringBufferSize(mEnd - r - 1);
+        }
         return f <= r ? ringBufferSize((mEnd - r) + (f - mBegin) - 1)
                       : ringBufferSize(f - r - 1);
     }
@@ -95,7 +97,9 @@ namespace utility
         useSize = GetUseSize(f, r);
 
         if (useSize < localSize)
+        {
             return false;
+        }
 
         directDeqSize = DirectDequeueSize(f, r);
         if (localSize <= directDeqSize)
@@ -126,7 +130,9 @@ namespace utility
 
         useSize = GetUseSize(f, r);
         if (iSize > useSize)
+        {
             return useSize;
+        }
         directDeqSize = DirectDequeueSize(f, r);
 
         if (iSize <= directDeqSize)
@@ -171,7 +177,9 @@ namespace utility
     ringBufferSize RingBuffer::DirectDequeueSize(const char *f, const char *r) const
     {
         if (f > r && r == mBegin)
+        {
             return ringBufferSize(mEnd - f - 1);
+        }
         return f <= r ? ringBufferSize(r - f) : ringBufferSize(mEnd - f);
     }
 

@@ -120,7 +120,9 @@ namespace network
     {
         std::lock_guard lock(mStackMutex);
         if (mStackSessionIdx.empty())
+        {
             return false;
+        }
 
         out = mStackSessionIdx.top();
         mStackSessionIdx.pop();
