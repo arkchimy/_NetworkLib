@@ -74,7 +74,7 @@ namespace utility
         else
         {
             memcpy(r, chpSrc, directEnQSize);
-            memcpy(mBegin, chpSrc + directEnQSize, localSize - directEnQSize);
+            memcpy(mBegin, chpSrc + directEnQSize, static_cast<size_t>(localSize - directEnQSize));
         }
 
         MoveRear(localSize);
@@ -109,7 +109,7 @@ namespace utility
         else
         {
             memcpy(chpDest, f, directDeqSize);
-            memcpy(chpDest + directDeqSize, mBegin, localSize - directDeqSize);
+            memcpy(chpDest + directDeqSize, mBegin, static_cast<size_t>(localSize - directDeqSize));
         }
 
         MoveFront(localSize);
@@ -142,7 +142,7 @@ namespace utility
         else
         {
             memcpy(chpDest, f, directDeqSize);
-            memcpy(chpDest + directDeqSize, mBegin, iSize - directDeqSize);
+            memcpy(chpDest + directDeqSize, mBegin, static_cast<size_t>(iSize - directDeqSize));
         }
         return iSize;
     }
@@ -212,6 +212,6 @@ namespace utility
         {
             pChk = mBegin + distance;
         }
-        InterlockedExchange((unsigned long long *)&mFrontPtr, (unsigned long long)pChk);
+        mFrontPtr = pChk;
     }
 }; // namespace utility

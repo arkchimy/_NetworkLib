@@ -12,6 +12,15 @@ namespace network
 {
     using ull = unsigned long long;
     using seqAddrType = long long;
+
+    enum class eComplete;
+    class MyOverlapped;
+
+    class AcceptOv;
+    class RecvOv;
+    class SendOv;
+    class ReleaseOv;
+
     struct SeqAndIdx
     {
         union
@@ -25,7 +34,32 @@ namespace network
         };
     };
 
-    enum complete
+    class Session
+    {
+        friend class NetworkLib;
+
+      public:
+        Session();
+        ~Session();
+
+      private:
+        SOCKET mSock;
+        SeqAndIdx mSessionID;
+
+        char *mAcceptBuf;
+
+        AcceptOv *mAcceptOv;
+        RecvOv *mRecvOv;
+        SendOv *mSendOv;
+        ReleaseOv *mReleaseOv;
+
+        // TODO : Interlock계열의 크기에따른 성능변화 측정.
+        short mIOcnt;
+        char mLive;
+        utility::RingBuffer *mRecvBuffer;
+    };
+
+    enum class eComplete
     {
         COMPLETE_ACCEPT,
         COMPLETE_RECV,
@@ -36,62 +70,41 @@ namespace network
     class MyOverlapped : public OVERLAPPED
     {
       public:
-        MyOverlapped(complete mode) : mMode(mode) {}
-        inline complete GetMode() const {  return mMode; }
-      protected:
-        complete mMode = NONE;
-    };  
-    class Session;
+        MyOverlapped(const eComplete mode) : mMode(mode) {}
+        const eComplete GetMode() const { return mMode; }
+      private:
+        const eComplete mMode;
+    };
     class AcceptOv : public MyOverlapped
     {
-    friend class NetworkLib;
+        friend class NetworkLib;
+
       public:
-        AcceptOv(Session &session) : mSession(session), MyOverlapped(COMPLETE_ACCEPT) {}
+        AcceptOv(Session &session)
+            : MyOverlapped(eComplete::COMPLETE_ACCEPT),
+              mSession(session) {}
+
       private:
-        Session& mSession;
+        Session &mSession;
     };
     class RecvOv : public MyOverlapped
     {
       public:
-        RecvOv() : MyOverlapped(COMPLETE_RECV) {}
+        RecvOv()
+            : MyOverlapped(eComplete::COMPLETE_RECV) {}
     };
     class SendOv : public MyOverlapped
     {
       public:
-        SendOv() : MyOverlapped(COMPLETE_SEND) {}
+        SendOv()
+            : MyOverlapped(eComplete::COMPLETE_SEND) {}
     };
     class ReleaseOv : public MyOverlapped
     {
       public:
-        ReleaseOv() : MyOverlapped(COMPLETE_RELEASE) {}
+        ReleaseOv()
+            : MyOverlapped(eComplete::COMPLETE_RELEASE) {}
     };
-
-
-
-    class Session
-    {
-      friend class NetworkLib;
-
-      public:
-        Session();
-        ~Session();
-      private:
-        SOCKET mSock;
-        SeqAndIdx mSessionID;
-
-        char* mAcceptBuf;
-
-        AcceptOv* mAcceptOv;
-        RecvOv* mRecvOv;
-        SendOv* mSendOv;
-        ReleaseOv* mReleaseOv;
-
-        //TODO : Interlock계열의 크기에따른 성능변화 측정.
-        short mIOcnt;
-        char mLive;
-        utility::RingBuffer* mRecvBuffer;
-    };
-
 } // namespace network
 
 /*

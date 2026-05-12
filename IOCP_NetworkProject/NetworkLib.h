@@ -23,12 +23,16 @@
 
 namespace network
 {
-    enum config
+    enum eNetConfig
     {
         CONFIG_WORKER_THREAD_CNT = 5,
         CONFIG_RINGBUFFER_SIZE = 2048,
         CONFIG_SESSION_MAX = 7000,
-  
+        
+        CONFIG_SERVER_PORT = 32000,
+        CONFIG_SERVER_ADDR = 0,
+
+        CONFIG_ZERO_COPY = 0,
     };
     struct WsadataRAII
     {

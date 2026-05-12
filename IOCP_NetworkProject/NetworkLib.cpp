@@ -17,14 +17,21 @@ namespace network
         ZeroMemory(&addr, sizeof(SOCKADDR_IN));
 
         addr.sin_family = AF_INET;
-        addr.sin_port = htons(7800);
-        addr.sin_addr.S_un.S_addr = htonl(INADDR_ANY);
+        addr.sin_port = htons(CONFIG_SERVER_PORT);
+        addr.sin_addr.S_un.S_addr = htonl(CONFIG_SERVER_ADDR);
 
         int retval = bind(mListenSock, reinterpret_cast<const sockaddr *>(&addr), sizeof(addr));
         RT_ASSERT(retval != SOCKET_ERROR);
 
         retval = listen(mListenSock, SOMAXCONN_HINT(65535));
         RT_ASSERT(retval != SOCKET_ERROR);
+
+        // TODO : ZeroCpy라면 CONFIG_ZERO_COPY = 1 바꿀것
+        if (CONFIG_ZERO_COPY)
+        {
+            char optval = 0;
+            setsockopt(mListenSock, SOL_SOCKET, SO_SNDBUF, &optval, 0);
+        }
 
         mHcp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0);
         CreateIoCompletionPort((HANDLE)mListenSock, mHcp, 0, 0);
@@ -59,7 +66,7 @@ namespace network
 
                 switch (ov->GetMode())
                 {
-                case COMPLETE_ACCEPT:
+                case eComplete::COMPLETE_ACCEPT:
                 {
                     // WHY : size_t(&nullptr->mMem); 크래시가 아니다.
                     /* 이유는 &와 -> 의 조합에 있어요.
@@ -84,7 +91,7 @@ namespace network
                 }
                 break;
 
-                case COMPLETE_RECV:
+                case eComplete::COMPLETE_RECV:
                 {
                     if (transferred == 0)
                     {
@@ -94,12 +101,12 @@ namespace network
                     
                 }
                 break;
-                case COMPLETE_SEND:
+                case eComplete::COMPLETE_SEND:
                 {
                     
                 }
                 break;
-                case COMPLETE_RELEASE:
+                case eComplete::COMPLETE_RELEASE:
                 {
                     
                 }
@@ -211,6 +218,7 @@ namespace network
         // IoCnt를 증가 시키고 Recv를 등록
         InterlockedIncrement16(&session.mIOcnt);
         utility::ringBufferSize freeSize = session.mRecvBuffer->GetFreeSize();
+
         //TODO : 링버퍼가 가득 찼다면 끊어야할 상황. 조작된 패킷
         if (freeSize == 0)
         {
