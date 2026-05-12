@@ -136,10 +136,12 @@
     <ClCompile Include="IOCP_NetworkProject.cpp" />
     <ClCompile Include="NetworkLib.cpp" />
     <ClCompile Include="Session.cpp" />
+    <ClCompile Include="utility\RingBuffer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="NetworkLib.h" />
     <ClInclude Include="Session.h" />
+    <ClInclude Include="utility\RingBuffer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

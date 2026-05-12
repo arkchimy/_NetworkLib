@@ -6,22 +6,21 @@
 #include <WS2tcpip.h>
 #include <Windows.h>
 
-
+#include "utility/RingBuffer.h"
 
 namespace network
 {
     using ull = unsigned long long;
-    using sessionStackDataType = unsigned long long;
     struct SeqAndIdx
     {
         union
         {
             struct
             {
-                ull Idx : 17; // sessions 의 idx
-                ull Seq : 47; // session의 고유성을 보장하기위한 seqNumber
+                LONG64 Idx : 17; // sessions 의 idx
+                LONG64 Seq : 47; // session의 고유성을 보장하기위한 seqNumber
             };
-            ull Value;
+            LONG64 Value;
         };
     };
 
@@ -61,25 +60,32 @@ namespace network
       public:
         ReleaseOv() : MyOverlapped(COMPLETE_RELEASE) {}
     };
+
+
+
     class Session
     {
       friend class NetworkLib;
 
       public:
-      Session();
+        Session();
+        ~Session();
       private:
         SOCKET mSock;
         SeqAndIdx mSessionID;
 
         char mAcceptBuf[(sizeof(SOCKADDR_IN) + 16) * 2]{};
 
-        AcceptOv mAcceptOv;
-        RecvOv mRecvOv;
-        SendOv mSendOv;
-        ReleaseOv mReleaseOv;
+
+        AcceptOv* mAcceptOv;
+        RecvOv* mRecvOv;
+        SendOv* mSendOv;
+        ReleaseOv* mReleaseOv;
 
         //TODO : Interlock계열의 크기에따른 성능변화 측정.
-        LONG mIOcnt;
+        short mIOcnt;
+        char mLive;
+        utility::RingBuffer* mRecvBuffer;
     };
 
 } // namespace network
