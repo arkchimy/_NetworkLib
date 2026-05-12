@@ -24,6 +24,7 @@ namespace network
         {
             char optval = 0;
             setsockopt(mListenSock, SOL_SOCKET, SO_SNDBUF, &optval, 0);
+
         }
 
         int retval = bind(mListenSock, reinterpret_cast<const sockaddr *>(&addr), sizeof(addr));
