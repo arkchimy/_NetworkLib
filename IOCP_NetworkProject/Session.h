@@ -11,6 +11,7 @@
 namespace network
 {
     using ull = unsigned long long;
+    using seqAddrType = long long;
     struct SeqAndIdx
     {
         union
@@ -40,10 +41,14 @@ namespace network
       protected:
         complete mMode = NONE;
     };  
+    class Session;
     class AcceptOv : public MyOverlapped
     {
+    friend class NetworkLib;
       public:
-        AcceptOv() : MyOverlapped(COMPLETE_ACCEPT) {}
+        AcceptOv(Session &session) : mSession(session), MyOverlapped(COMPLETE_ACCEPT) {}
+      private:
+        Session& mSession;
     };
     class RecvOv : public MyOverlapped
     {
@@ -74,8 +79,7 @@ namespace network
         SOCKET mSock;
         SeqAndIdx mSessionID;
 
-        char mAcceptBuf[(sizeof(SOCKADDR_IN) + 16) * 2]{};
-
+        char* mAcceptBuf;
 
         AcceptOv* mAcceptOv;
         RecvOv* mRecvOv;

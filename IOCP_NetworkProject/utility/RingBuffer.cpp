@@ -178,15 +178,15 @@ namespace utility
     void RingBuffer::MoveRear(ringBufferSize iSize)
     {
         char *pChk;
-        char *distance;
+        long long distance;
         char *oldRear;
 
         oldRear = mRearPtr;
         pChk = oldRear + iSize;
-        distance = reinterpret_cast<char *>(pChk - mEnd);
+        distance = pChk - mEnd;
         if (mEnd < pChk)
         {
-            pChk = mBegin + long long(distance);
+            pChk = mBegin + distance;
         }
         mRearPtr = pChk;
     }
@@ -194,15 +194,15 @@ namespace utility
     void RingBuffer::MoveFront(ringBufferSize iSize)
     {
         char *pChk;
-        char *distance;
+        long long distance;
         char *oldFront;
 
         oldFront = mFrontPtr;
         pChk = oldFront + iSize;
-        distance = reinterpret_cast<char *>(pChk - mEnd);
+        distance = pChk - mEnd;
         if (mEnd < pChk)
         {
-            pChk = mBegin + long long(distance);
+            pChk = mBegin + distance;
         }
         InterlockedExchange((unsigned long long *)&mFrontPtr, (unsigned long long)pChk);
     }

@@ -26,7 +26,9 @@ namespace network
     enum config
     {
         CONFIG_WORKER_THREAD_CNT = 5,
+        CONFIG_RINGBUFFER_SIZE = 2048,
         CONFIG_SESSION_MAX = 7000,
+  
     };
     struct WsadataRAII
     {
@@ -76,10 +78,10 @@ namespace network
         HANDLE mHcp; // iocpHandle
         Session mSessions[CONFIG_SESSION_MAX];
 
-        std::stack<ull> mStackSessionIdx;
+        std::stack<seqAddrType> mStackSessionIdx;
         std::mutex mStackMutex;
 
-        ull mSeqID = -1;
+        seqAddrType mSeqID = -1;
 
         WsadataRAII wsadata;
     };

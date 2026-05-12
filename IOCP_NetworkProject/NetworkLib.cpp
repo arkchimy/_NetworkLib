@@ -5,9 +5,9 @@ namespace network
 {
     NetworkLib::NetworkLib()
     {
-        for (ull i = 0; i < CONFIG_WORKER_THREAD_CNT; i++)
+        for (seqAddrType idx = 0; idx < CONFIG_SESSION_MAX; ++idx)
         {
-            stackSessionIdx_Push(i);
+            stackSessionIdx_Push(idx);
         }
 
         mListenSock = socket(AF_INET, SOCK_STREAM, 0);
@@ -78,9 +78,8 @@ namespace network
 
                       실제로 주소 0에 메모리 접근을 전혀 안 해요. 위치 계산만 하는 거예요.
                     */
-                    size_t offset = reinterpret_cast<size_t>(&(reinterpret_cast<Session *>(nullptr))->mAcceptOv);
-                    RT_ASSERT(offset != 80);
-                    session = reinterpret_cast<Session *>(reinterpret_cast<size_t>(&ov) - offset);
+          
+                    session = &static_cast<AcceptOv *>(ov)->mSession;
                     completeAcceptEx(*session);
                 }
                 break;
@@ -189,7 +188,7 @@ namespace network
         */
         // AcceptEx 함수가 실패하면 AcceptEx 는 FALSE를 반환합니다.
         {
-            ZeroMemory(&session.mAcceptOv, sizeof(OVERLAPPED));
+            ZeroMemory(session.mAcceptOv, sizeof(OVERLAPPED));
 
             DWORD recvByte;
             bool retval = AcceptEx(mListenSock, session.mSock, session.mAcceptBuf, 0,
@@ -228,7 +227,7 @@ namespace network
             wsabuf[1].buf = session.mRecvBuffer->GetBeginPtr();
             wsabuf[1].len = freeSize - session.mRecvBuffer->DirectEnqueueSize();
         }
-        ZeroMemory(&session.mRecvOv, sizeof(OVERLAPPED));
+        ZeroMemory(session.mRecvOv, sizeof(OVERLAPPED));
 
         DWORD Flags = 0;
         int recvRetval;
@@ -246,7 +245,7 @@ namespace network
                    reinterpret_cast<char *>(&mListenSock), sizeof(mListenSock));
         CreateIoCompletionPort(reinterpret_cast<HANDLE>(session.mSock), mHcp, reinterpret_cast<ULONG_PTR>(&session), 0);
 
-        ull seqID = InterlockedIncrement(&mSeqID);
+        seqAddrType seqID = _InterlockedIncrement64(&mSeqID);
         session.mSessionID.Seq = seqID;
 
         onAccept(session.mSessionID);
