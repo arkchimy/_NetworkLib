@@ -5,7 +5,7 @@
 #include <thread>
 
 #include "Session.h"
-
+#include "utility/Message.h"
 
 namespace network
 {
@@ -17,7 +17,7 @@ class NetworkLib
 
   protected:
     virtual void onAccept(const ull &sessionID) = 0;
-    virtual void onRecv(CMessage* msg) = 0;
+    virtual void onRecv(utility::Message* msg) = 0;
     virtual void onSend() = 0;
     virtual void onRelease() = 0;
 

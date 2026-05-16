@@ -36,6 +36,9 @@
     <ClCompile Include="Common.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="utility\Message.cpp">
+      <Filter>utility</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="NetworkLib.h">
@@ -55,6 +58,12 @@
     </ClInclude>
     <ClInclude Include="NetConfig.h">
       <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Header.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="utility\Message.h">
+      <Filter>utility</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

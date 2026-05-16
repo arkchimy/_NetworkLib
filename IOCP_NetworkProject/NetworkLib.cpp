@@ -233,7 +233,7 @@ void NetworkLib::completeRecv(Session &session, DWORD transferred)
 
     utility::ringBufferSize useSize = recvBuffer.GetUseSize();
 
-    while (useSize < sizeof(Header))
+    while (sizeof(Header) < useSize)
     {
         Header header;
         recvBuffer.Peek(&header, sizeof(header));
@@ -245,18 +245,34 @@ void NetworkLib::completeRecv(Session &session, DWORD transferred)
             return;
         }
         // 메세지가 완성이 되었다면.
-        char buffer[CONFIG_RINGBUFFER_SIZE];
-        if (useSize <= header.Len + sizeof(Header))
+
+        if (header.Len + sizeof(Header) <= useSize)
         {
-            utility::ringBufferSize msgLen = header.Len + sizeof(Header);
-            RT_ASSERT(recvBuffer.Dequeue(buffer, msgLen) == msgLen);
+            recvBuffer.Dequeue(&header, sizeof(header));
 
-            //onRecv()
+            utility::Message *msg = MY_NEW utility::Message();
+            utility::ringBufferSize deqSize = recvBuffer.DirectDequeueSize();
+
+            // WHY : Header를 컨텐츠까지 끌고 가지않음.
+            msg->InitMessage(session.mSessionID.Value,header.RandKey);
+
+            if (deqSize < header.Len)
+            {
+                msg->PutData(recvBuffer.GetFrontPtr(), deqSize);
+                msg->PutData(recvBuffer.GetBeginPtr(), header.Len - deqSize);
+            }
+            else
+            {
+                msg->PutData(recvBuffer.GetFrontPtr(), header.Len);
+            }
+            recvBuffer.MoveFront(header.Len);
+
+            onRecv(msg);
         }
-
         useSize = recvBuffer.GetUseSize();
+  
     }
-
+    registerRecv(session);
 }
 
 void NetworkLib::checkAndHandleIoError(Session &session, const int lastError)

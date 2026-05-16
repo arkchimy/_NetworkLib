@@ -142,6 +142,7 @@
     <ClCompile Include="MyOverlapped.cpp" />
     <ClCompile Include="NetworkLib.cpp" />
     <ClCompile Include="Session.cpp" />
+    <ClCompile Include="utility\Message.cpp" />
     <ClCompile Include="utility\RingBuffer.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -151,6 +152,7 @@
     <ClInclude Include="NetConfig.h" />
     <ClInclude Include="NetworkLib.h" />
     <ClInclude Include="Session.h" />
+    <ClInclude Include="utility\Message.h" />
     <ClInclude Include="utility\RingBuffer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
