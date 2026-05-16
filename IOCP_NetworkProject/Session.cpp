@@ -8,23 +8,23 @@ namespace network
           mIOcnt(0),
           mLive(0)
     {
-        mAcceptBuf = new char[(sizeof(SOCKADDR_IN) + 16) * 2]();
-        mAcceptOv = new AcceptOv(*this);
-        mRecvOv = new RecvOv();
-        mSendOv = new SendOv();
-        mReleaseOv = new ReleaseOv();
-        mRecvBuffer = new utility::RingBuffer(2048);
+        mAcceptBuf = MY_NEW char[(sizeof(SOCKADDR_IN) + 16) * 2]();
+        mAcceptOv = MY_NEW AcceptOv(this);
+        mRecvOv = MY_NEW RecvOv();
+        mSendOv = MY_NEW SendOv();
+        mReleaseOv = MY_NEW ReleaseOv();
+        mRecvBuffer = MY_NEW utility::RingBuffer(CONFIG_RINGBUFFER_SIZE);
     }
 
     Session::~Session()
     {
-        delete[] mAcceptBuf;
+        MY_DELETE[] mAcceptBuf;
 
-        delete mAcceptOv;
-        delete mRecvOv;
-        delete mSendOv;
-        delete mReleaseOv;
+        MY_DELETE mAcceptOv;
+        MY_DELETE mRecvOv;
+        MY_DELETE mSendOv;
+        MY_DELETE mReleaseOv;
 
-        delete mRecvBuffer;
+        MY_DELETE mRecvBuffer;
     }
 }; // namespace network

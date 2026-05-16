@@ -89,19 +89,21 @@ void NetworkLib::workerThread()
                   실제로 주소 0에 메모리 접근을 전혀 안 해요. 위치 계산만 하는 거예요.
                 */
 
-                session = &static_cast<AcceptOv *>(ov)->mSession;
+                session = static_cast<Session*>(static_cast<AcceptOv *>(ov)->mSession);
                 completeAcceptEx(*session);
             }
             break;
 
             case eComplete::COMPLETE_RECV:
             {
-                // gracefull 대응
+                // Client의 FIN 대응
                 if (transferred == 0)
                 {
                     InterlockedExchange8(&session->mLive, 0);
                     CancelIoEx(reinterpret_cast<HANDLE>(session->mSock), session->mSendOv);
+                    break;
                 }
+                completeRecv(*session, transferred);
             }
             break;
             case eComplete::COMPLETE_SEND:
@@ -182,7 +184,7 @@ void NetworkLib::completeAcceptEx(Session &session)
     seqAddrType seqID = _InterlockedIncrement64(&mSeqID);
     session.mSessionID.Seq = seqID;
 
-    onAccept(session.mSessionID);
+    onAccept(session.mSessionID.Idx);
     registerRecv(session);
 
     registerAcceptEx();
@@ -224,6 +226,38 @@ void NetworkLib::registerRecv(Session &session)
     }
 }
 
+void NetworkLib::completeRecv(Session &session, DWORD transferred)
+{
+    utility::RingBuffer &recvBuffer = *session.mRecvBuffer;
+    recvBuffer.MoveRear(transferred);
+
+    utility::ringBufferSize useSize = recvBuffer.GetUseSize();
+
+    while (useSize < sizeof(Header))
+    {
+        Header header;
+        recvBuffer.Peek(&header, sizeof(header));
+
+        // WHY : Len을 조작한 경우
+        if (header.Len < 0)
+        {
+            disconnectSession();
+            return;
+        }
+        // 메세지가 완성이 되었다면.
+        char buffer[CONFIG_RINGBUFFER_SIZE];
+        if (useSize <= header.Len + sizeof(Header))
+        {
+            utility::ringBufferSize msgLen = header.Len + sizeof(Header);
+            RT_ASSERT(recvBuffer.Dequeue(buffer, msgLen) == msgLen);
+
+            //onRecv()
+        }
+
+        useSize = recvBuffer.GetUseSize();
+    }
+
+}
 
 void NetworkLib::checkAndHandleIoError(Session &session, const int lastError)
 {

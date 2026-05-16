@@ -18,7 +18,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="IOCP_NetworkProject.cpp">
+    <ClCompile Include="main.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
     <ClCompile Include="NetworkLib.cpp">
@@ -30,6 +30,12 @@
     <ClCompile Include="utility\RingBuffer.cpp">
       <Filter>utility</Filter>
     </ClCompile>
+    <ClCompile Include="MyOverlapped.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="Common.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="NetworkLib.h">
@@ -40,6 +46,15 @@
     </ClInclude>
     <ClInclude Include="utility\RingBuffer.h">
       <Filter>utility</Filter>
+    </ClInclude>
+    <ClInclude Include="MyOverlapped.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Common.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="NetConfig.h">
+      <Filter>헤더 파일</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

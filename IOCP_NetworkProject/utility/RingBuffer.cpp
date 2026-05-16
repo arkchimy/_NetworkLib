@@ -1,11 +1,12 @@
 #include "RingBuffer.h"
 #include <Windows.h>
+#include "../Common.h"
 
 namespace utility
 {
     RingBuffer::RingBuffer(ringBufferSize iBufferSize)
     {
-        mBegin = new char[iBufferSize];
+        mBegin = MY_NEW char[iBufferSize];
         if (mBegin == nullptr)
         {
             __debugbreak();
@@ -16,7 +17,7 @@ namespace utility
 
     RingBuffer::~RingBuffer()
     {
-        delete[] mBegin;
+        MY_DELETE[] mBegin;
     }
 
     ringBufferSize RingBuffer::GetUseSize() const

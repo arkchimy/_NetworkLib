@@ -1,56 +1,14 @@
 #pragma once
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-
-#ifndef RT_ASSERT
-#define RT_ASSERT(x) \
-    if (!(x))        \
-        __debugbreak();
-#endif
-
-#include "Session.h"
-#include <Mswsock.h>
-#include <WS2tcpip.h>
-#include <Windows.h>
 #include <mutex>
 #include <stack>
 #include <thread>
 
-#pragma comment(lib, "WS2_32.lib")
-#pragma comment(lib, "Mswsock.lib")
+#include "Session.h"
+
 
 namespace network
 {
-enum eNetConfig
-{
-    CONFIG_CONCURRENT_THREAD_CNT = 0,
-    CONFIG_WORKER_THREAD_CNT = 5,
-    CONFIG_RINGBUFFER_SIZE = 2048,
-    CONFIG_SESSION_MAX = 7000,
-
-    CONFIG_SERVER_PORT = 32000,
-    CONFIG_SERVER_ADDR = 0,
-
-    CONFIG_ZERO_COPY = 0,
-};
-struct WsadataRAII
-{
-    WsadataRAII()
-    {
-        // WSAStartup 함수는 성공하면 0을 반환합니다.
-        if (WSAStartup(MAKEWORD(2, 2), &wsadata) != 0)
-        {
-            RT_ASSERT(false);
-        }
-    }
-    ~WsadataRAII()
-    {
-        WSACleanup();
-    }
-    WSADATA wsadata;
-};
 class NetworkLib
 {
   public:
@@ -58,8 +16,8 @@ class NetworkLib
     virtual ~NetworkLib() = default;
 
   protected:
-    virtual void onAccept(const SeqAndIdx &sessionID) = 0;
-    virtual void onRecv() = 0;
+    virtual void onAccept(const ull &sessionID) = 0;
+    virtual void onRecv(CMessage* msg) = 0;
     virtual void onSend() = 0;
     virtual void onRelease() = 0;
 
@@ -70,6 +28,7 @@ class NetworkLib
     void completeAcceptEx(Session &session);
 
     void registerRecv(Session &session);
+    void completeRecv(Session &session, DWORD transferred);
 
 
     void checkAndHandleIoError(Session &session, const int lastError);
@@ -77,6 +36,7 @@ class NetworkLib
     bool stackSessionIdx_Pop(ull &out);
     void stackSessionIdx_Push(const ull &input);
 
+    void disconnectSession() {}; // 악의적인 Session 발견
   private:
     std::thread mWorkerThreads[CONFIG_WORKER_THREAD_CNT];
     SOCKET mListenSock;

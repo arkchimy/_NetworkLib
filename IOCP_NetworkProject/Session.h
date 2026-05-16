@@ -1,110 +1,53 @@
 #pragma once
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
 
-#include <WS2tcpip.h>
-#include <Windows.h>
-
+#include "NetConfig.h"
+#include "MyOverlapped.h"
 #include "utility/RingBuffer.h"
+
 
 namespace network
 {
-    using ull = unsigned long long;
-    using seqAddrType = long long;
+using ull = unsigned long long;
+using seqAddrType = long long;
 
-    enum class eComplete;
-    class MyOverlapped;
-
-    class AcceptOv;
-    class RecvOv;
-    class SendOv;
-    class ReleaseOv;
-
-    struct SeqAndIdx
+struct SeqAndIdx
+{
+    union
     {
-        union
+        struct
         {
-            struct
-            {
-                LONG64 Idx : 17; // sessions 의 idx
-                LONG64 Seq : 47; // session의 고유성을 보장하기위한 seqNumber
-            };
-            LONG64 Value;
+            LONG64 Idx : 17; // sessions 의 idx
+            LONG64 Seq : 47; // session의 고유성을 보장하기위한 seqNumber
         };
+        LONG64 Value;
     };
+};
 
-    class Session
-    {
-        friend class NetworkLib;
+class Session
+{
+    friend class NetworkLib;
 
-      public:
-        Session();
-        ~Session();
+  public:
+    Session();
+    ~Session();
 
-      private:
-        SOCKET mSock;
-        SeqAndIdx mSessionID;
+  private:
+    SOCKET mSock;
+    SeqAndIdx mSessionID;
 
-        char *mAcceptBuf;
+    char *mAcceptBuf;
 
-        AcceptOv *mAcceptOv;
-        RecvOv *mRecvOv;
-        SendOv *mSendOv;
-        ReleaseOv *mReleaseOv;
+    AcceptOv *mAcceptOv;
+    RecvOv *mRecvOv;
+    SendOv *mSendOv;
+    ReleaseOv *mReleaseOv;
 
-        // TODO : Interlock계열의 크기에따른 성능변화 측정.
-        short mIOcnt;
-        char mLive;
-        utility::RingBuffer *mRecvBuffer;
-    };
+    // TODO : Interlock계열의 크기에따른 성능변화 측정.
+    short mIOcnt;
+    char mLive;
+    utility::RingBuffer *mRecvBuffer;
+};
 
-    enum class eComplete
-    {
-        COMPLETE_ACCEPT,
-        COMPLETE_RECV,
-        COMPLETE_SEND,
-        COMPLETE_RELEASE,
-        NONE,
-    };
-    class MyOverlapped : public OVERLAPPED
-    {
-      public:
-        MyOverlapped(const eComplete mode) : mMode(mode) {}
-        const eComplete GetMode() const { return mMode; }
-      private:
-        const eComplete mMode;
-    };
-    class AcceptOv : public MyOverlapped
-    {
-        friend class NetworkLib;
-
-      public:
-        AcceptOv(Session &session)
-            : MyOverlapped(eComplete::COMPLETE_ACCEPT),
-              mSession(session) {}
-
-      private:
-        Session &mSession;
-    };
-    class RecvOv : public MyOverlapped
-    {
-      public:
-        RecvOv()
-            : MyOverlapped(eComplete::COMPLETE_RECV) {}
-    };
-    class SendOv : public MyOverlapped
-    {
-      public:
-        SendOv()
-            : MyOverlapped(eComplete::COMPLETE_SEND) {}
-    };
-    class ReleaseOv : public MyOverlapped
-    {
-      public:
-        ReleaseOv()
-            : MyOverlapped(eComplete::COMPLETE_RELEASE) {}
-    };
 } // namespace network
 
 /*
