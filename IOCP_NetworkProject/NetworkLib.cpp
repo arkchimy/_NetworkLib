@@ -294,7 +294,7 @@ void NetworkLib::registerSend(Session &session)
     // TODO : 동기화객체 안쓸떄와 비교하기
     std::lock_guard<std::mutex> lock(session.mSendLock);
     SendOv &sendOv = *session.mSendOv;
-    __int16 msgCnt = CONFIG_SEND_MESSAGE_MAXCOUNT < session.mSendQ.size() ? CONFIG_SEND_MESSAGE_MAXCOUNT : session.mSendQ.size();
+    __int16 msgCnt = static_cast<__int16>(CONFIG_SEND_MESSAGE_MAXCOUNT < session.mSendQ.size() ? CONFIG_SEND_MESSAGE_MAXCOUNT : session.mSendQ.size());
     if (msgCnt == 0)
     {
         return;
@@ -310,7 +310,7 @@ void NetworkLib::registerSend(Session &session)
         sendOv.mSendMsgs[cnt] = msg;
 
         wsabuf[cnt].buf = msg->GetFrontPtr();
-        wsabuf[cnt].len = msg->GetUseSize();
+        wsabuf[cnt].len = static_cast<ULONG>(msg->GetUseSize());
     }
 
     ZeroMemory(&sendOv, sizeof(OVERLAPPED));
