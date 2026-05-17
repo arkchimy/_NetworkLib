@@ -5,10 +5,6 @@ namespace network
 {
 NetworkLib::NetworkLib()
 {
-    for (seqAddrType idx = 0; idx < CONFIG_SESSION_MAX; ++idx)
-    {
-        stackSessionIdx_Push(idx);
-    }
 
     mListenSock = socket(AF_INET, SOCK_STREAM, 0);
     RT_ASSERT(mListenSock != INVALID_SOCKET);
@@ -39,10 +35,15 @@ NetworkLib::NetworkLib()
     HANDLE bSucces = CreateIoCompletionPort((HANDLE)mListenSock, mHcp, 0, 0);
     RT_ASSERT(bSucces != nullptr);
 
+    for (seqAddrType idx = 0; idx < CONFIG_SESSION_MAX; ++idx)
+    {
+        stackSessionIdx_Push(idx);
+        registerAcceptEx();
+    }
+
     for (int idx = 0; idx < CONFIG_WORKER_THREAD_CNT; ++idx)
     {
         mWorkerThreads[idx] = std::thread(&NetworkLib::workerThread, this);
-        registerAcceptEx();
     }
 }
 
@@ -89,7 +90,7 @@ void NetworkLib::workerThread()
                   실제로 주소 0에 메모리 접근을 전혀 안 해요. 위치 계산만 하는 거예요.
                 */
 
-                session = static_cast<Session*>(static_cast<AcceptOv *>(ov)->mSession);
+                session = static_cast<Session *>(static_cast<AcceptOv *>(ov)->mSession);
                 completeAcceptEx(*session);
             }
             break;
@@ -108,10 +109,12 @@ void NetworkLib::workerThread()
             break;
             case eComplete::COMPLETE_SEND:
             {
+                completeSend(*session);
             }
             break;
             case eComplete::COMPLETE_RELEASE:
             {
+                completeRelease(*session);
             }
             break;
             default:
@@ -121,7 +124,10 @@ void NetworkLib::workerThread()
         short ioCount = InterlockedDecrement16(&session->mIOcnt);
         if (ioCount == 0)
         {
-            // TODO: 연결 끊기.
+            if (InterlockedCompareExchange16(&session->mIOcnt, (short)(1 << 15), 0) == 0)
+            {
+                PostQueuedCompletionStatus(mHcp, 0, key, session->mReleaseOv);
+            }
         }
     }
 }
@@ -139,7 +145,6 @@ void NetworkLib::registerAcceptEx()
     session.mSock = socket(AF_INET, SOCK_STREAM, 0);
 
     InterlockedExchange64(&session.mSessionID.Value, top);
-    session.mIOcnt = 1;
 
     /*
         AcceptEx 매개변수
@@ -155,7 +160,7 @@ void NetworkLib::registerAcceptEx()
             &mAcceptOv         // overlapped
         );
     */
-    
+
     {
         ZeroMemory(session.mAcceptOv, sizeof(OVERLAPPED));
         DWORD recvByte;
@@ -182,9 +187,16 @@ void NetworkLib::completeAcceptEx(Session &session)
     CreateIoCompletionPort(reinterpret_cast<HANDLE>(session.mSock), mHcp, reinterpret_cast<ULONG_PTR>(&session), 0);
 
     seqAddrType seqID = _InterlockedIncrement64(&mSeqID);
-    session.mSessionID.Seq = seqID;
+    SeqAndIdx seqIdx;
+    {
+        seqIdx.Idx = session.mSessionID.Idx;
+        seqIdx.Seq = seqID;
+    }
+    InterlockedExchange8(&session.mLive, true);
+    InterlockedExchange64(&session.mSessionID.Value, seqIdx.Value);
+    InterlockedExchange16(&session.mIOcnt, 1);
 
-    onAccept(session.mSessionID.Idx);
+    onAccept(session.mSessionID.Value);
     registerRecv(session);
 
     registerAcceptEx();
@@ -193,13 +205,13 @@ void NetworkLib::completeAcceptEx(Session &session)
 void NetworkLib::registerRecv(Session &session)
 {
     // IoCnt를 증가 시키고 Recv를 등록
-    InterlockedIncrement16(&session.mIOcnt);
     utility::ringBufferSize freeSize = session.mRecvBuffer->GetFreeSize();
 
     // TODO : 링버퍼가 가득 찼다면 끊어야할 상황. 조작된 패킷
     if (freeSize == 0)
     {
-        __debugbreak();
+        disconnectSession();
+        return;
     }
     WSABUF wsabuf[2];
     ZeroMemory(wsabuf, sizeof(wsabuf));
@@ -216,13 +228,16 @@ void NetworkLib::registerRecv(Session &session)
     }
     ZeroMemory(session.mRecvOv, sizeof(OVERLAPPED));
 
-    DWORD Flags = 0;
-    int recvRetval;
-    // 수신 작업이 즉시 완료되면 WSARecv 는 0을 반환합니다.그렇지 않으면 SOCKET_ERROR 값이 반환되
-    recvRetval = WSARecv(session.mSock, wsabuf, bufCnt, NULL, &Flags, session.mRecvOv, NULL);
-    if (recvRetval == SOCKET_ERROR)
+    if (session.mLive)
     {
-        checkAndHandleIoError(session, WSAGetLastError());
+        DWORD Flags = 0;
+        InterlockedIncrement16(&session.mIOcnt);
+        // 수신 작업이 즉시 완료되면 WSARecv 는 0을 반환합니다.그렇지 않으면 SOCKET_ERROR 값이 반환되
+        int recvRetval = WSARecv(session.mSock, wsabuf, bufCnt, NULL, &Flags, session.mRecvOv, NULL);
+        if (recvRetval == SOCKET_ERROR)
+        {
+            checkAndHandleIoError(session, WSAGetLastError());
+        }
     }
 }
 
@@ -238,8 +253,8 @@ void NetworkLib::completeRecv(Session &session, DWORD transferred)
         Header header;
         recvBuffer.Peek(&header, sizeof(header));
 
-        // WHY : Len을 조작한 경우
-        if (header.Len < 0)
+        // WHY : Len을 조작한 경우 임. 적어도 type을 위한 0 이상의 크기가 PayLoad로 들어감.
+        if (header.Len <= 0)
         {
             disconnectSession();
             return;
@@ -254,7 +269,7 @@ void NetworkLib::completeRecv(Session &session, DWORD transferred)
             utility::ringBufferSize deqSize = recvBuffer.DirectDequeueSize();
 
             // WHY : Header를 컨텐츠까지 끌고 가지않음.
-            msg->InitMessage(session.mSessionID.Value,header.RandKey);
+            msg->InitMessage(session.mSessionID.Value, header.RandKey);
 
             if (deqSize < header.Len)
             {
@@ -270,11 +285,66 @@ void NetworkLib::completeRecv(Session &session, DWORD transferred)
             onRecv(msg);
         }
         useSize = recvBuffer.GetUseSize();
-  
     }
     registerRecv(session);
 }
 
+void NetworkLib::registerSend(Session &session)
+{
+    // TODO : 동기화객체 안쓸떄와 비교하기
+    std::lock_guard<std::mutex> lock(session.mSendLock);
+    SendOv &sendOv = *session.mSendOv;
+    __int16 msgCnt = CONFIG_SEND_MESSAGE_MAXCOUNT < session.mSendQ.size() ? CONFIG_SEND_MESSAGE_MAXCOUNT : session.mSendQ.size();
+    if (msgCnt == 0)
+    {
+        return;
+    }
+    sendOv.mMsgCnt = msgCnt;
+
+    WSABUF wsabuf[CONFIG_SEND_MESSAGE_MAXCOUNT];
+    ZeroMemory(wsabuf, sizeof(wsabuf));
+    for (__int16 cnt = 0; cnt < msgCnt; ++cnt)
+    {
+        utility::Message *msg = session.mSendQ.front();
+        session.mSendQ.pop();
+        sendOv.mSendMsgs[cnt] = msg;
+
+        wsabuf[cnt].buf = msg->GetFrontPtr();
+        wsabuf[cnt].len = msg->GetUseSize();
+    }
+
+    ZeroMemory(&sendOv, sizeof(OVERLAPPED));
+
+    // 수신 작업이 즉시 완료되면 WSARecv 는 0을 반환합니다.그렇지 않으면 SOCKET_ERROR 값이 반환되
+    if (session.mLive)
+    {
+        DWORD Flags = 0;
+        InterlockedIncrement16(&session.mIOcnt);
+        int sendRetval = WSASend(session.mSock, wsabuf, msgCnt, NULL, Flags, &sendOv, NULL);
+        if (sendRetval == SOCKET_ERROR)
+        {
+            checkAndHandleIoError(session, WSAGetLastError());
+        }
+    }
+}
+
+void NetworkLib::completeSend(Session &session)
+{
+    SendOv &sendOv = *session.mSendOv;
+
+    // 완료통지에서 이미 보낸 MSG 반환.
+    for (__int16 idx = 0; idx < sendOv.mMsgCnt; ++idx)
+    {
+        MY_DELETE sendOv.mSendMsgs[idx];
+    }
+    registerSend(session);
+}
+void NetworkLib::completeRelease(Session &session)
+{
+    session.ReleaseSession();
+    stackSessionIdx_Push(session.mSessionID.Idx);
+    registerAcceptEx();
+}
 void NetworkLib::checkAndHandleIoError(Session &session, const int lastError)
 {
     switch (lastError)

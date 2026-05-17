@@ -24,7 +24,6 @@ class MyOverlapped : public OVERLAPPED
 class AcceptOv : public MyOverlapped
 {
     friend class NetworkLib;
-
   public:
     AcceptOv(void *session)
         : MyOverlapped(eComplete::COMPLETE_ACCEPT),
@@ -41,9 +40,19 @@ class RecvOv : public MyOverlapped
 };
 class SendOv : public MyOverlapped
 {
+    friend class NetworkLib;
+    friend class Session;
+
   public:
     SendOv()
-        : MyOverlapped(eComplete::COMPLETE_SEND) {}
+        : MyOverlapped(eComplete::COMPLETE_SEND) ,
+          mSendMsgs{0},
+          mMsgCnt(0)
+    {}
+
+  private:
+    void *mSendMsgs[CONFIG_SEND_MESSAGE_MAXCOUNT];
+    __int16 mMsgCnt;
 };
 class ReleaseOv : public MyOverlapped
 {

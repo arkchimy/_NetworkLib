@@ -30,6 +30,10 @@ class NetworkLib
     void registerRecv(Session &session);
     void completeRecv(Session &session, DWORD transferred);
 
+    void registerSend(Session& session);
+    void completeSend(Session &session);
+
+    void completeRelease(Session &session);
 
     void checkAndHandleIoError(Session &session, const int lastError);
 

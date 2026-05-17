@@ -156,7 +156,7 @@ class Message
     void Peek(char *out, SerializeBufferSize size) const;
 
     void HexLog(eTag tag = eTag::NORMAL, const wchar_t *filename = L"SerializeBuffer_hex.txt");
-
+    size_t GetUseSize();
   private:
     char mBegin[(DWORD)eBufferSize::MaxSize]{0};
     char *mEnd = nullptr;

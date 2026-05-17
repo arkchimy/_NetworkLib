@@ -48,7 +48,9 @@ void operator delete(void *ptr, const char *file, int line)
     // 경고 C4291 'void *operator new(size_t,const char *,int)' : 일치하는 operator delete가 없습니다.
     //  초기화할 때 예외가 Throw되지 않으면 메모리가 확보되지 않습니다.
     //  경고 제거용
-    __debugbreak();
+
+    BOOL bSuccess = HeapFree(gHeap.sMyHeap, 0, ptr);
+    RT_ASSERT(bSuccess != 0);
 }
 
 void operator delete[](void *ptr, const char *file, int line)

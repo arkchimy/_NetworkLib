@@ -1,9 +1,11 @@
 #pragma once
+#include <queue>
+#include <mutex>
 
 #include "NetConfig.h"
 #include "MyOverlapped.h"
 #include "utility/RingBuffer.h"
-
+#include "utility/Message.h"
 
 namespace network
 {
@@ -30,7 +32,7 @@ class Session
   public:
     Session();
     ~Session();
-
+    void ReleaseSession();
   private:
     SOCKET mSock;
     SeqAndIdx mSessionID;
@@ -46,6 +48,8 @@ class Session
     short mIOcnt;
     char mLive;
     utility::RingBuffer *mRecvBuffer;
+    std::queue<utility::Message *> mSendQ;
+    std::mutex mSendLock;
 };
 
 } // namespace network

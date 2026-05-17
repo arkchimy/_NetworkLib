@@ -175,4 +175,14 @@ void Message::HexLog(eTag tag, const wchar_t *filename)
     free(printBuffer);
 }
 
+size_t Message::GetUseSize()
+{
+    if (mFrontPtr <= mRearPtr)
+    {
+        return mRearPtr - mFrontPtr;
+    }
+
+    return mEnd - mFrontPtr + mRearPtr - mBegin;
+}
+
 }; // namespace utility
