@@ -49,9 +49,6 @@ NetworkLib::NetworkLib()
 
 void NetworkLib::workerThread()
 {
-    // 벤치마크
-    // GetQueuedCompletionStatusEx 한번에 뽑는다?
-
     while (true)
     {
         DWORD transferred = 0;
@@ -72,24 +69,6 @@ void NetworkLib::workerThread()
             {
             case eComplete::COMPLETE_ACCEPT:
             {
-                // WHY : size_t(&nullptr->mMem); 크래시가 아니다.
-                /* 이유는 &와 -> 의 조합에 있어요.
-                  크래시가 나는 경우는 역참조해서 값을 읽거나 쓸 때예요.
-
-                  Session* p = nullptr;
-                  p->mAcceptOv;   // 값 읽기 → 크래시 (주소 0에 접근)
-                  p->mAcceptOv = x; // 값 쓰기 → 크래시
-
-                  지금 코드는 값을 읽지 않고 주소만 계산해요.
-                  &(reinterpret_cast<Session*>(nullptr))->mAcceptOv
-
-                  컴파일러 입장에서 이건:
-                  "nullptr(=주소 0)에서 mAcceptOv가 몇 바이트 떨어져 있는가?"
-                  = 0 + offset = offset 자체
-
-                  실제로 주소 0에 메모리 접근을 전혀 안 해요. 위치 계산만 하는 거예요.
-                */
-
                 session = static_cast<Session *>(static_cast<AcceptOv *>(ov)->mSession);
                 completeAcceptEx(*session);
             }
@@ -138,6 +117,7 @@ void NetworkLib::registerAcceptEx()
     if (stackSessionIdx_Pop(top) == false)
     {
         // TODO : sessionStack이 비엇음을 알리는 Log작성후 return 하도록 변경하기.
+        wprintf(L"[NetworkLib] 세션 풀 고갈 - 최대 접속 수 초과\n");
         return;
     }
 
@@ -210,7 +190,7 @@ void NetworkLib::registerRecv(Session &session)
     // TODO : 링버퍼가 가득 찼다면 끊어야할 상황. 조작된 패킷
     if (freeSize == 0)
     {
-        disconnectSession();
+        disconnectSession(session.mSessionID);
         return;
     }
     WSABUF wsabuf[2];
@@ -256,7 +236,7 @@ void NetworkLib::completeRecv(Session &session, DWORD transferred)
         // WHY : Len을 조작한 경우 임. 적어도 type을 위한 0 이상의 크기가 PayLoad로 들어감.
         if (header.Len <= 0)
         {
-            disconnectSession();
+            disconnectSession(session.mSessionID);
             return;
         }
         // 메세지가 완성이 되었다면.
@@ -284,6 +264,10 @@ void NetworkLib::completeRecv(Session &session, DWORD transferred)
 
             onRecv(msg);
         }
+        else
+        {
+            break;
+        }
         useSize = recvBuffer.GetUseSize();
     }
     registerRecv(session);
@@ -292,11 +276,22 @@ void NetworkLib::completeRecv(Session &session, DWORD transferred)
 void NetworkLib::registerSend(Session &session)
 {
     // TODO : 동기화객체 안쓸떄와 비교하기
-    std::lock_guard<std::mutex> lock(session.mSendLock);
     SendOv &sendOv = *session.mSendOv;
-    __int16 msgCnt = static_cast<__int16>(CONFIG_SEND_MESSAGE_MAXCOUNT < session.mSendQ.size() ? CONFIG_SEND_MESSAGE_MAXCOUNT : session.mSendQ.size());
+    __int16 msgCnt = static_cast<__int16>(CONFIG_SEND_MESSAGE_MAXCOUNT < session.mSenqQSize ? CONFIG_SEND_MESSAGE_MAXCOUNT : session.mSenqQSize);
+    
     if (msgCnt == 0)
     {
+        InterlockedExchange8(&session.mSendFlag, false);
+        msgCnt = static_cast<__int16>(CONFIG_SEND_MESSAGE_MAXCOUNT < session.mSenqQSize ? CONFIG_SEND_MESSAGE_MAXCOUNT : session.mSenqQSize);
+        if (msgCnt != 0)
+        {
+            if (_InterlockedCompareExchange8(&session.mSendFlag, true, false) == false)
+            {
+                ZeroMemory(&sendOv, sizeof(OVERLAPPED));
+                InterlockedIncrement16(&session.mIOcnt);
+                PostQueuedCompletionStatus(mHcp, 0, (ULONG_PTR)&session, session.mSendOv);
+            }
+        }
         return;
     }
     sendOv.mMsgCnt = msgCnt;
@@ -305,8 +300,8 @@ void NetworkLib::registerSend(Session &session)
     ZeroMemory(wsabuf, sizeof(wsabuf));
     for (__int16 cnt = 0; cnt < msgCnt; ++cnt)
     {
-        utility::Message *msg = session.mSendQ.front();
-        session.mSendQ.pop();
+        utility::Message *msg = session.DeQueueMsgOrNull();
+        RT_ASSERT(msg != nullptr);
         sendOv.mSendMsgs[cnt] = msg;
 
         wsabuf[cnt].buf = msg->GetFrontPtr();
@@ -335,6 +330,7 @@ void NetworkLib::completeSend(Session &session)
     // 완료통지에서 이미 보낸 MSG 반환.
     for (__int16 idx = 0; idx < sendOv.mMsgCnt; ++idx)
     {
+        onSend(static_cast<utility::Message*>(sendOv.mSendMsgs[idx]));
         MY_DELETE sendOv.mSendMsgs[idx];
     }
     registerSend(session);
@@ -362,7 +358,7 @@ void NetworkLib::checkAndHandleIoError(Session &session, const int lastError)
     case WSAECONNABORTED: //    10053 :
 
     case WSAECONNRESET: // 10054:
-        session.mLive = 0;
+        InterlockedExchange8(&session.mLive, false);
         _InterlockedDecrement16(&session.mIOcnt);
         break;
 
@@ -387,6 +383,82 @@ void NetworkLib::stackSessionIdx_Push(const ull &input)
 {
     std::lock_guard lock(mStackMutex);
     mStackSessionIdx.push(input);
+}
+
+bool NetworkLib::sessionLock(SeqAndIdx sessionID)
+{
+    Session &session = mSessions[sessionID.Idx];
+    short ioCnt = InterlockedIncrement16(&session.mIOcnt);
+
+    if ((ioCnt & RELEASE_IOCOUNT) != 0)
+    {
+        //이미 끊긴 연결
+        return false;
+    }
+    if (session.mSessionID != sessionID)
+    {
+        // 대상이 다름.
+        ioCnt = InterlockedDecrement16(&session.mIOcnt);
+        if (ioCnt == 0)
+        {
+            if (InterlockedCompareExchange16(&session.mIOcnt, RELEASE_IOCOUNT, 0) == 0)
+            {
+                PostQueuedCompletionStatus(mHcp, 0, (ULONG_PTR)&session, session.mReleaseOv);
+            }
+        }
+        return false;
+    }
+    return true;
+}
+
+void NetworkLib::sessionUnLock(SeqAndIdx sessionID)
+{
+    Session &session = mSessions[sessionID.Idx];
+    short ioCnt = InterlockedDecrement16(&session.mIOcnt);
+    if (ioCnt == 0)
+    {
+        if (InterlockedCompareExchange16(&session.mIOcnt, RELEASE_IOCOUNT, 0) == 0)
+        {
+            PostQueuedCompletionStatus(mHcp, 0, (ULONG_PTR)&session, session.mReleaseOv);
+        }
+    }
+    
+}
+
+void NetworkLib::SendPost(SeqAndIdx sessionID, utility::Message &msg)
+{
+    if (sessionLock(sessionID) == false)
+    {
+        MY_DELETE &msg;
+        return;
+    }
+    Session &session = mSessions[sessionID.Idx];
+    session.EnQueueMsg(msg);
+
+    if (_InterlockedCompareExchange8(&session.mSendFlag, true, false) == false)
+    {
+        _InterlockedIncrement16(&session.mIOcnt);
+        PostQueuedCompletionStatus(mHcp, 0, (ULONG_PTR) &session, session.mSendOv);
+    }
+
+    sessionUnLock(sessionID);
+}
+
+void NetworkLib::disconnectSession(SeqAndIdx sessionID)
+{
+    
+    if(sessionLock(sessionID) == false)
+    {
+        return;
+    }
+    Session &session = mSessions[sessionID.Idx];
+    InterlockedExchange8(&session.mLive, false);
+
+    CancelIoEx((HANDLE)session.mSock, session.mSendOv);
+    CancelIoEx((HANDLE)session.mSock, session.mRecvOv);
+
+    sessionUnLock(sessionID);
+
 }
 
 }; // namespace network

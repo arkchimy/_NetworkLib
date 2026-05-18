@@ -9,6 +9,7 @@
 
 namespace network
 {
+constexpr short RELEASE_IOCOUNT = static_cast<short>(1 << 15);
 class NetworkLib
 {
   public:
@@ -17,9 +18,17 @@ class NetworkLib
 
   protected:
     virtual void onAccept(const ull &sessionID) = 0;
-    virtual void onRecv(utility::Message* msg) = 0;
-    virtual void onSend() = 0;
+    virtual void onRecv(utility::Message *msg) = 0;
+    virtual void onSend(utility::Message *msg) = 0;
     virtual void onRelease() = 0;
+
+    void SendPost(SeqAndIdx sessionID,utility::Message& msg);
+    public:
+    //__int64 GetAcceptTPS() {};
+    //__int64 GetSendTPS() {};
+    //__int64 GetRecvTPS() {};
+  protected:
+    void disconnectSession(SeqAndIdx sessionID);
 
   private:
     void workerThread();
@@ -30,7 +39,7 @@ class NetworkLib
     void registerRecv(Session &session);
     void completeRecv(Session &session, DWORD transferred);
 
-    void registerSend(Session& session);
+    void registerSend(Session &session);
     void completeSend(Session &session);
 
     void completeRelease(Session &session);
@@ -40,7 +49,9 @@ class NetworkLib
     bool stackSessionIdx_Pop(ull &out);
     void stackSessionIdx_Push(const ull &input);
 
-    void disconnectSession() {}; // 악의적인 Session 발견
+    bool sessionLock(SeqAndIdx sessionID);
+    void sessionUnLock(SeqAndIdx sessionID);
+
   private:
     std::thread mWorkerThreads[CONFIG_WORKER_THREAD_CNT];
     SOCKET mListenSock;
@@ -52,7 +63,6 @@ class NetworkLib
     std::mutex mStackMutex;
 
     seqAddrType mSeqID = -1;
-
     WsadataRAII wsadata;
 };
 

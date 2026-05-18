@@ -23,6 +23,14 @@ struct SeqAndIdx
         };
         LONG64 Value;
     };
+    bool operator==(const SeqAndIdx &other) const
+    {
+        return this->Value == other.Value;
+    }
+    bool operator!=(const SeqAndIdx &other) const
+    {
+        return this->Value != other.Value;
+    }
 };
 
 class Session
@@ -32,6 +40,8 @@ class Session
   public:
     Session();
     ~Session();
+    void EnQueueMsg(utility::Message &msg);
+    utility::Message *DeQueueMsgOrNull();
     void ReleaseSession();
   private:
     SOCKET mSock;
@@ -47,9 +57,13 @@ class Session
     // TODO : Interlock계열의 크기에따른 성능변화 측정.
     short mIOcnt;
     char mLive;
+    char mSendFlag;
+
     utility::RingBuffer *mRecvBuffer;
+
     std::queue<utility::Message *> mSendQ;
-    std::mutex mSendLock;
+    std::mutex mSendQlock;
+    short mSenqQSize;
 };
 
 } // namespace network
