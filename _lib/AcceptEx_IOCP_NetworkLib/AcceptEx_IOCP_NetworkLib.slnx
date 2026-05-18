@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="AcceptEx_IOCP_NetworkLib.vcxproj" Id="50cc943c-da7a-4670-b695-4f35da14bf9f" />
+</Solution>
