@@ -3,7 +3,7 @@
 #define WIN32_LEAN_AND_MEAN             // 거의 사용되지 않는 내용을 Windows 헤더에서 제외합니다.
 #pragma once
 
-#include <mutex>
+#include <shared_mutex>
 #include <stack>
 #include <thread>
 
@@ -25,7 +25,7 @@ class NetworkLib
     virtual void onSend(utility::Message *msg) = 0;
     virtual void onRelease(const SeqAndIdx &sessionID) = 0;
 
-    void SendPost(const SeqAndIdx& sessionID, utility::Message &msg);
+    void sendPost(const SeqAndIdx& sessionID, utility::Message &msg);
 
   public:
     //__int64 GetAcceptTPS() {};
@@ -64,7 +64,7 @@ class NetworkLib
     Session mSessions[CONFIG_SESSION_MAX];
 
     std::stack<seqAddrType> mStackSessionIdx;
-    std::mutex mStackMutex;
+    std::shared_mutex mStackMutex;
 
     seqAddrType mSeqID = -1;
 };

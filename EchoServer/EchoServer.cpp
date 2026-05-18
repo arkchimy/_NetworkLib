@@ -1,5 +1,8 @@
-﻿#include "EchoServer.h"
+﻿
 #include <shared_mutex>
+
+#include "EchoServer.h"
+#include "PacketCommon.h"
 
 namespace network
 {
@@ -7,32 +10,29 @@ EchoServer::EchoServer()
     : hEchoEvent(INVALID_HANDLE_VALUE)
 {
     hEchoEvent = CreateEvent(nullptr, false, false, nullptr);
-    mContentsThread = std::thread(&EchoServer::ContentsThread, this);
-
+    mContentsThread = std::thread(&EchoServer::contentsThread, this);
 }
 void EchoServer::onAccept(const SOCKADDR_IN &addr, const SeqAndIdx &sessionID)
 {
-    Player& player = *MY_NEW Player();
+    Player &player = *MY_NEW Player();
     player.Addr = addr;
-    player.SessionID = sessionID.Value;
-
+    player.SessionID = sessionID;
 }
 void EchoServer::onRecv(utility::Message *msg)
 {
-    std::lock_guard<std::mutex> lock(mQLock);
+    std::lock_guard<std::shared_mutex> lock(mQLock);
     mContentsQ.push(msg);
 
     RT_ASSERT(hEchoEvent != INVALID_HANDLE_VALUE);
     SetEvent(hEchoEvent);
-
 }
 void EchoServer::onSend(utility::Message *msg)
 {
-    // TODO : onSend에서 해야할일 있을까.
+    // Why : onSend에서 해야할일 있을까.
 }
 void EchoServer::onRelease(const SeqAndIdx &sessionID)
 {
-    std::lock_guard<std::mutex> lock(mPlayerMapLock);
+    std::lock_guard<std::shared_mutex> lock(mPlayerMapLock);
     auto iter = mPlayerMap.find(sessionID.Value);
 
     RT_ASSERT(iter != mPlayerMap.end());
@@ -42,27 +42,80 @@ void EchoServer::onRelease(const SeqAndIdx &sessionID)
 void EchoServer::packProc(Message &msg)
 {
     __int64 ownerID = msg.GetOwnerID();
-    std::shared_lock<std::mutex> slock(mPlayerMapLock);
-    auto iter  = mPlayerMap.find(ownerID);
-    if (iter == mPlayerMap.end())
+    SeqAndIdx seqIdx{ownerID};
     {
-        MY_DELETE &msg;
-        return;
+        std::shared_lock<std::shared_mutex> slock(mPlayerMapLock);
+        auto iter = mPlayerMap.find(ownerID);
+        if (iter == mPlayerMap.end())
+        {
+            MY_DELETE & msg;
+            return;
+        }
+        Player &player = *iter->second;
+        if (msg.DeCoding(player.SessionFK) == false)
+        {
+            disconnectSession(seqIdx);
+            MY_DELETE & msg;
+            return;
+        }
     }
-    Player &player = *iter->second;
-    if (msg.DeCoding(player.SessionFK) == false)
-    {
-        //TODO : 조작된 패킷 처리.
-    }
+
     WORD wType;
     msg >> wType;
-    switch (wType)
+    ePacketType type = static_cast<ePacketType>(wType);
+    switch (type)
     {
-        //TODO : Packet Case 추가하기.
+    case ePacketType::CS_ECHO_REQ:
+    {
+        procEchoMessage(seqIdx, msg);
+    }
+    break;
+    default:
+    {
+        // TODO : 임시로 중단.. 아직 공격 구현안했으므로 무조건 실수임.
+        __debugbreak();
+        SeqAndIdx seqIdx{ownerID};
+        disconnectSession(seqIdx);
+        MY_DELETE & msg;
+    }
     }
 }
 
-bool EchoServer::popContentsQ(Message** msg)
+void EchoServer::procEchoMessage(const SeqAndIdx &sessionID, Message &msg)
+{
+    __int16 strLen;
+    msg >> strLen;
+    if (CONTENTS_MSG_MAX_SIZE < strLen)
+    {
+        disconnectSession(sessionID);
+        return;
+    }
+    char buffer[CONTENTS_MSG_MAX_SIZE];
+    msg.GetData(buffer, strLen);
+
+    __int8 sessionFK;
+    {
+        std::shared_lock<std::shared_mutex> lock(mPlayerMapLock);
+        auto iter = mPlayerMap.find(sessionID.Value);
+        if (iter == mPlayerMap.end())
+        {
+            MY_DELETE & msg;
+            return;
+        }
+        sessionFK = iter->second->SessionFK;
+    }
+
+    Header header{strLen, rand() % 256};
+
+    msg.InitMessage(sessionID.Value, header.RandKey);
+    msg.PutData(&header, sizeof(header));
+    msg.EnCoding(sessionFK);
+
+    sendPost(sessionID, msg);
+}
+
+
+bool EchoServer::popContentsQ(Message **msg)
 {
     if (mContentsQ.empty())
     {
@@ -74,8 +127,7 @@ bool EchoServer::popContentsQ(Message** msg)
     return true;
 }
 
-
-void EchoServer::ContentsThread()
+void EchoServer::contentsThread()
 {
     DWORD retval;
     while (1)

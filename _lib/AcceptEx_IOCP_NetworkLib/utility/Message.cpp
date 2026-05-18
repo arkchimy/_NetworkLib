@@ -45,10 +45,11 @@ Message::~Message()
     _interlockedexchange64(&UseCnt, 1);
 }
 
-void Message::InitMessage(ull sessionID, BYTE RandKey)
+void Message::InitMessage(__int64 sessionID,__int8 randKey)
 {
+ 
     mOwnerID = sessionID;
-    mRandKey = RandKey;
+    mRandKey = randKey;
     mSize = (DWORD)eBufferSize::BufferSize;
     mFrontPtr = mBegin;
     mRearPtr = mBegin;

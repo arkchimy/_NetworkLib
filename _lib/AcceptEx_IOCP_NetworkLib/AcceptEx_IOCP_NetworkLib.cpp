@@ -8,7 +8,6 @@
 
 network::WsadataRAII wsadata;
 
-// TODO: 라이브러리 함수의 예제입니다.
 void fnAcceptExIOCPNetworkLib()
 {
     using namespace network;
@@ -217,7 +216,6 @@ void NetworkLib::registerRecv(Session &session)
     // IoCnt를 증가 시키고 Recv를 등록
     utility::ringBufferSize freeSize = session.mRecvBuffer->GetFreeSize();
 
-    // TODO : 링버퍼가 가득 찼다면 끊어야할 상황. 조작된 패킷
     if (freeSize == 0)
     {
         disconnectSession(session.mSessionID);
@@ -305,7 +303,6 @@ void NetworkLib::completeRecv(Session &session, DWORD transferred)
 
 void NetworkLib::registerSend(Session &session)
 {
-    // TODO : 동기화객체 안쓸떄와 비교하기
     SendOv &sendOv = *session.mSendOv;
     __int16 msgCnt = static_cast<__int16>(CONFIG_SEND_MESSAGE_MAXCOUNT < session.mSenqQSize ? CONFIG_SEND_MESSAGE_MAXCOUNT : session.mSenqQSize);
 
@@ -456,7 +453,7 @@ void NetworkLib::sessionUnLock(const SeqAndIdx& sessionID)
     }
 }
 
-void NetworkLib::SendPost(const SeqAndIdx& sessionID, utility::Message &msg)
+void NetworkLib::sendPost(const SeqAndIdx& sessionID, utility::Message &msg)
 {
     if (sessionLock(sessionID) == false)
     {

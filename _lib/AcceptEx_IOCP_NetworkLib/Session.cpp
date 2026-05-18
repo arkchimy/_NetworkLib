@@ -32,13 +32,13 @@ Session::~Session()
 }
 void Session::EnQueueMsg(utility::Message &msg)
 {
-    std::lock_guard<std::mutex> lock(mSendQlock);
+    std::lock_guard<std::shared_mutex> lock(mSendQlock);
     mSendQ.push(&msg);
     _InterlockedIncrement16(&mSenqQSize);
 }
 utility::Message *Session::DeQueueMsgOrNull()
 {
-    std::lock_guard<std::mutex> lock(mSendQlock);
+    std::lock_guard<std::shared_mutex> lock(mSendQlock);
 
     if (mSendQ.empty())
     {

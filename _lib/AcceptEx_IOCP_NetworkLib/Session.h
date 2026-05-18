@@ -54,7 +54,6 @@ class Session
     SendOv *mSendOv;
     ReleaseOv *mReleaseOv;
 
-    // TODO : Interlock계열의 크기에따른 성능변화 측정.
     short mIOcnt;
     char mLive;
     char mSendFlag;
@@ -62,7 +61,7 @@ class Session
     utility::RingBuffer *mRecvBuffer;
 
     std::queue<utility::Message *> mSendQ;
-    std::mutex mSendQlock;
+    std::shared_mutex mSendQlock;
     short mSenqQSize;
 };
 

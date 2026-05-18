@@ -152,6 +152,12 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="EchoServer.h" />
+    <ClInclude Include="PacketCommon.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\_lib\AcceptEx_IOCP_NetworkLib\AcceptEx_IOCP_NetworkLib.vcxproj">
+      <Project>{50cc943c-da7a-4670-b695-4f35da14bf9f}</Project>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

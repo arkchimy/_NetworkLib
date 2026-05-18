@@ -71,7 +71,7 @@ class Message
     ~Message();
 
   public:
-    void InitMessage(ull sessionID , BYTE RandKey);
+    void InitMessage(__int64 sessionID,__int8 randKey);
 
     template <Fundamental T>
     Message &operator<<(const T data)
@@ -151,6 +151,7 @@ class Message
     SSIZE_T PutData(PVOID src, SerializeBufferSize size);
     SSIZE_T GetData(PVOID desc, SerializeBufferSize size);
     __int64 GetOwnerID() { return mOwnerID; }
+    __int8 GetRandomKey() { return mRandKey; }
     char *GetFrontPtr() { return mFrontPtr; }
 
     BOOL Resize();
@@ -168,8 +169,8 @@ class Message
     __int64 mOwnerID;
     LONG64 UseCnt = 0;
 
-    BYTE mFixedKey = 0x00;
-    BYTE mRandKey = 0x00;
+    __int8 mFixedKey = 0x00;
+    __int8 mRandKey = 0x00;
 
     bool BLastMessage;
     DWORD mSize = (DWORD)eBufferSize::BufferSize;
