@@ -145,11 +145,12 @@ class Message
         return *this;
     }
 
-    void EnCoding();
-    bool DeCoding();
+    void EnCoding(char FK);
+    bool DeCoding(char FK);
 
     SSIZE_T PutData(PVOID src, SerializeBufferSize size);
     SSIZE_T GetData(PVOID desc, SerializeBufferSize size);
+    __int64 GetOwnerID() { return mOwnerID; }
     char *GetFrontPtr() { return mFrontPtr; }
 
     BOOL Resize();
@@ -164,7 +165,7 @@ class Message
     char *mFrontPtr = nullptr;
     char *mRearPtr = nullptr;
 
-    ull mOwnerID;
+    __int64 mOwnerID;
     LONG64 UseCnt = 0;
 
     BYTE mFixedKey = 0x00;

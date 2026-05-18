@@ -20,10 +20,10 @@ class NetworkLib
     virtual ~NetworkLib() = default;
 
   protected:
-    virtual void onAccept(const ull &sessionID) = 0;
+    virtual void onAccept(const SOCKADDR_IN& addr, const SeqAndIdx &sessionID) = 0;
     virtual void onRecv(utility::Message *msg) = 0;
     virtual void onSend(utility::Message *msg) = 0;
-    virtual void onRelease() = 0;
+    virtual void onRelease(const SeqAndIdx &sessionID) = 0;
 
     void SendPost(const SeqAndIdx& sessionID, utility::Message &msg);
 
@@ -67,7 +67,6 @@ class NetworkLib
     std::mutex mStackMutex;
 
     seqAddrType mSeqID = -1;
-    WsadataRAII wsadata;
 };
 
 } // namespace network

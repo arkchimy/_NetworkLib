@@ -6,6 +6,7 @@
 #include <iostream>
 #include "AcceptEx_IOCP_NetworkLib.h"
 
+network::WsadataRAII wsadata;
 
 // TODO: 라이브러리 함수의 예제입니다.
 void fnAcceptExIOCPNetworkLib()
@@ -190,6 +191,7 @@ void NetworkLib::completeAcceptEx(Session &session)
                reinterpret_cast<char *>(&mListenSock), sizeof(mListenSock));
     CreateIoCompletionPort(reinterpret_cast<HANDLE>(session.mSock), mHcp, reinterpret_cast<ULONG_PTR>(&session), 0);
 
+
     seqAddrType seqID = _InterlockedIncrement64(&mSeqID);
 
     SeqAndIdx seqIdx;
@@ -200,7 +202,11 @@ void NetworkLib::completeAcceptEx(Session &session)
     InterlockedExchange64(&session.mSessionID.Value, seqIdx.Value);
     InterlockedExchange16(&session.mIOcnt, 1);
 
-    onAccept(session.mSessionID.Value);
+    SOCKADDR_IN addr;
+    int nameLen = sizeof(addr);
+    getpeername(session.mSock, (sockaddr *)&addr, &nameLen);
+
+    onAccept(addr,session.mSessionID);
     registerRecv(session);
 
     registerAcceptEx();
@@ -362,6 +368,8 @@ void NetworkLib::completeSend(Session &session)
 void NetworkLib::completeRelease(Session &session)
 {
     session.ReleaseSession();
+    onRelease(session.mSessionID);
+
     stackSessionIdx_Push(session.mSessionID.Idx);
     registerAcceptEx();
 }

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <queue>
 #include <mutex>
 
@@ -18,10 +18,10 @@ struct SeqAndIdx
     {
         struct
         {
-            LONG64 Idx : 17; // sessions 의 idx
-            LONG64 Seq : 47; // session의 고유성을 보장하기위한 seqNumber
+            __int64 Idx : 17; // sessions 의 idx
+            __int64 Seq : 47; // session의 고유성을 보장하기위한 seqNumber
         };
-        LONG64 Value;
+        __int64 Value;
     };
     bool operator==(const SeqAndIdx &other) const
     {

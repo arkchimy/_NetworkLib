@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include <strsafe.h>
 
 #include "Message.h"
@@ -56,15 +56,16 @@ void Message::InitMessage(ull sessionID, BYTE RandKey)
     BLastMessage = false;
 }
 
-void Message::EnCoding()
+void Message::EnCoding(char FK)
 {
 
 }
 
-bool Message::DeCoding()
+bool Message::DeCoding(char FK)
 {
     return true;
 }
+
 
 SSIZE_T Message::PutData(PVOID src, SerializeBufferSize size)
 {
