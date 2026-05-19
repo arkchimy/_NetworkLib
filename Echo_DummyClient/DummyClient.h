@@ -15,7 +15,7 @@
 class DummyClient
 {
   public:
-    DummyClient(__int8 userCnt);
+    DummyClient(int userCnt);
     void Start(const char* addr,__int16 port);
 
   private:
@@ -26,7 +26,7 @@ class DummyClient
 
     const char *mServerIP;
     __int16 mServerPort;
-    __int8 mUserCnt;
+    int mUserCnt;
 };
 
 

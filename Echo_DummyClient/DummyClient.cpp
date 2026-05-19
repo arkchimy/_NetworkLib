@@ -4,7 +4,9 @@
 
 MyWsaData mywsadata;
 
-DummyClient::DummyClient(__int8 userCnt)
+constexpr __int16 max_len = 2000 - 7;
+
+DummyClient::DummyClient(int userCnt)
     : mServerIP(nullptr),
       mServerPort(0),
       mUserCnt(userCnt)
@@ -15,7 +17,7 @@ DummyClient::DummyClient(__int8 userCnt)
     {
         std::string str;
         int len =rand() % 1000;
-        for (int i = 0; i < len; ++i)
+        for (int i = 0; i < max_len; ++i)
         {
             str += rand() % 255 + 1;
         }
@@ -32,8 +34,7 @@ void DummyClient::Start(const char *addr, __int16 port)
 
     for (__int8 idx = 0; idx < mUserCnt; ++idx)
     {
-        std::thread thread(&DummyClient::clientThread, this);
-        mThread_vec[idx] = std::move(thread);
+        mThread_vec[idx] = std::thread(&DummyClient::clientThread, this);
     }
 }
 
@@ -52,7 +53,7 @@ void DummyClient::clientThread()
     DWORD retval = connect(sock, (const sockaddr *)&addr, sizeof(addr));
     RT_ASSERT(retval == 0);
 
-    char buffer[1001];
+    char buffer[max_len + 1];
 
     while (1)
     {
@@ -79,33 +80,38 @@ void DummyClient::clientThread()
         }
         for (int i = 0; i < 100; i++)
         {
-            __int16 len;
-            __int8 RK;
-            __int16 type;
-            __int16 strLen;
-            recv(sock, (char *)&len, sizeof(__int16), 0);  // header
-            recv(sock, (char *)&RK, sizeof(__int8), 0);    // header
-            recv(sock, (char *)&type, sizeof(__int16), 0); // header
-            recv(sock, (char *)&strLen, sizeof(__int16), 0); // header
+            __int16 recvLen;
+            __int8 recvRK;
+            __int16 recvType;
+            __int16 recvStrlen;
 
-            recv(sock, buffer, (int)strLen, 0);
+
+            recv(sock, (char *)&recvLen, sizeof(__int16), 0); // header
+            recv(sock, (char *)&recvRK, sizeof(__int8), 0);   // header
+            recv(sock, (char *)&recvType, sizeof(__int16), 0); // header
+            recv(sock, (char *)&recvStrlen, sizeof(__int16), 0); // header
+
+            recv(sock, buffer, (int)recvStrlen, 0);
         
             {
-                __int16 recvLen;
-                __int8 recvRK;
-                __int16 recvType;
-                *msg[i] >> recvLen;
-                *msg[i] >> recvRK;
-                *msg[i] >> recvType;
+                __int16 len;
+                __int8 RK;
+                __int16 type;
+                __int16 strLen;
+
+                *msg[i] >> len;
+                *msg[i] >> RK;
+                *msg[i] >> type;
+                *msg[i] >> strLen;
                 if (len != recvLen)
                 {
                     __debugbreak();
                 }
-                if (type != static_cast<__int16>(ePacketType::SC_ECHO_RES))
+                if (recvType != static_cast<__int16>(ePacketType::SC_ECHO_RES))
                 {
                     __debugbreak();
                 }
-                if (strLen != static_cast<__int16>(mString_vec[i].size()))
+                if (strLen != recvStrlen)
                 {
                     __debugbreak();
                 }

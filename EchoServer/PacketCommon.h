@@ -1,7 +1,7 @@
 #pragma once
 enum contentsConfig
 {
-	CONTENTS_MSG_MAX_SIZE = 1000,
+	CONTENTS_MSG_MAX_SIZE = 2000,
 };
 enum class ePacketType :__int16
 {

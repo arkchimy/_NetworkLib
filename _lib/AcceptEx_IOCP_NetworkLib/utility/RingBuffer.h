@@ -1,10 +1,6 @@
 #pragma once
 namespace utility
 {
-enum eConfig
-{
-    RINGBUFFER_SIZE = 2048,
-};
 using ringBufferSize = __int32;
 
 class RingBuffer

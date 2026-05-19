@@ -2,8 +2,10 @@
 
 #include <AcceptEx_IOCP_NetworkLib/AcceptEx_IOCP_NetworkLib.h>
 
+#include <iostream>
 #include <map>
 #include <queue>
+
 #pragma comment(lib, "AcceptEx_IOCP_NetworkLib.lib")
 
 namespace network
@@ -21,6 +23,7 @@ class EchoServer : public NetworkLib
 {
   public:
     EchoServer();
+    friend std::ostream &operator<<(std::ostream &out, const EchoServer& server);
 
   private:
     virtual void onAccept(const SOCKADDR_IN &addr, const SeqAndIdx &sessionID);
@@ -28,14 +31,19 @@ class EchoServer : public NetworkLib
     virtual void onSend(Message *msg);
     virtual void onRelease(const SeqAndIdx &sessionID);
 
-    void packProc(Message& msg);
-    void procEchoMessage(const SeqAndIdx& sessionID, Message &msg);
+    void packProc(Message &msg);
+    void procEchoMessage(const SeqAndIdx &sessionID, Message &msg);
 
-    bool popContentsQ(Message** msg);
+    bool popContentsQ(Message **msg);
+
   private:
     void contentsThread();
+    void monitorThread();
+
   private:
     std::thread mContentsThread;
+    std::thread mMonitorThread;
+
     HANDLE hEchoEvent;
 
     std::shared_mutex mQLock;
@@ -43,5 +51,6 @@ class EchoServer : public NetworkLib
 
     std::shared_mutex mPlayerMapLock;
     std::map<__int64, Player *> mPlayerMap;
+
 };
 } // namespace network

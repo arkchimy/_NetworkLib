@@ -3,7 +3,7 @@
 
 int main()
 {
-    __int8 cnt;
+    int cnt;
     std::cin >> cnt;
     DummyClient *dummy = new DummyClient(cnt);
     dummy->Start("127.0.0.1", 32000);

@@ -1,5 +1,27 @@
-#include "NetworkLib.h"
+// AcceptEx_IOCP_NetworkLib.cpp : 정적 라이브러리를 위한 함수를 정의합니다.
+//
+
+#include "pch.h"
+
+#include "AcceptEx_IOCP_NetworkLib.h"
 #include <iostream>
+
+network::WsadataRAII wsadata;
+
+void fnAcceptExIOCPNetworkLib()
+{
+    using namespace network;
+    class EchoServer : public NetworkLib
+    {
+        virtual void onAccept(const ull &sessionID) {};
+        virtual void onRecv(utility::Message *msg) {};
+        virtual void onSend(utility::Message *msg) {};
+
+        // 보낼시 SendPost
+        SeqAndIdx sessionID;
+        utility::Message *msg;
+    };
+}
 
 namespace network
 {
@@ -161,25 +183,28 @@ void NetworkLib::registerAcceptEx()
 
 void NetworkLib::completeAcceptEx(Session &session)
 {
+    InterlockedIncrement64(&mAcceptCnt);
 
     setsockopt(session.mSock, SOL_SOCKET, SO_UPDATE_ACCEPT_CONTEXT,
                reinterpret_cast<char *>(&mListenSock), sizeof(mListenSock));
     CreateIoCompletionPort(reinterpret_cast<HANDLE>(session.mSock), mHcp, reinterpret_cast<ULONG_PTR>(&session), 0);
 
     seqAddrType seqID = _InterlockedIncrement64(&mSeqID);
+
     SeqAndIdx seqIdx;
-    {
-        seqIdx.Idx = session.mSessionID.Idx;
-        seqIdx.Seq = seqID;
-    }
+    seqIdx.Idx = session.mSessionID.Idx;
+    seqIdx.Seq = seqID;
+
     InterlockedExchange8(&session.mLive, true);
     InterlockedExchange64(&session.mSessionID.Value, seqIdx.Value);
     InterlockedExchange16(&session.mIOcnt, 1);
 
-    onAccept(session.mSessionID.Value);
-    registerRecv(session);
+    SOCKADDR_IN addr;
+    int nameLen = sizeof(addr);
+    getpeername(session.mSock, (sockaddr *)&addr, &nameLen);
 
-    registerAcceptEx();
+    onAccept(addr, session.mSessionID);
+    registerRecv(session);
 }
 
 void NetworkLib::registerRecv(Session &session)
@@ -187,7 +212,6 @@ void NetworkLib::registerRecv(Session &session)
     // IoCnt를 증가 시키고 Recv를 등록
     utility::ringBufferSize freeSize = session.mRecvBuffer->GetFreeSize();
 
-    // TODO : 링버퍼가 가득 찼다면 끊어야할 상황. 조작된 패킷
     if (freeSize == 0)
     {
         disconnectSession(session.mSessionID);
@@ -204,7 +228,7 @@ void NetworkLib::registerRecv(Session &session)
     {
         ++bufCnt;
         wsabuf[1].buf = session.mRecvBuffer->GetBeginPtr();
-        wsabuf[1].len = freeSize - session.mRecvBuffer->DirectEnqueueSize();
+        wsabuf[1].len = freeSize - wsabuf[0].len;
     }
     ZeroMemory(session.mRecvOv, sizeof(OVERLAPPED));
 
@@ -223,6 +247,7 @@ void NetworkLib::registerRecv(Session &session)
 
 void NetworkLib::completeRecv(Session &session, DWORD transferred)
 {
+
     utility::RingBuffer &recvBuffer = *session.mRecvBuffer;
     recvBuffer.MoveRear(transferred);
 
@@ -263,6 +288,7 @@ void NetworkLib::completeRecv(Session &session, DWORD transferred)
             recvBuffer.MoveFront(header.Len);
 
             onRecv(msg);
+            InterlockedIncrement64(&mRecvCnt);
         }
         else
         {
@@ -275,10 +301,9 @@ void NetworkLib::completeRecv(Session &session, DWORD transferred)
 
 void NetworkLib::registerSend(Session &session)
 {
-    // TODO : 동기화객체 안쓸떄와 비교하기
     SendOv &sendOv = *session.mSendOv;
     __int16 msgCnt = static_cast<__int16>(CONFIG_SEND_MESSAGE_MAXCOUNT < session.mSenqQSize ? CONFIG_SEND_MESSAGE_MAXCOUNT : session.mSenqQSize);
-    
+
     if (msgCnt == 0)
     {
         InterlockedExchange8(&session.mSendFlag, false);
@@ -326,18 +351,23 @@ void NetworkLib::registerSend(Session &session)
 void NetworkLib::completeSend(Session &session)
 {
     SendOv &sendOv = *session.mSendOv;
+    InterlockedAdd64(&mSendCnt, sendOv.mMsgCnt);
 
     // 완료통지에서 이미 보낸 MSG 반환.
     for (__int16 idx = 0; idx < sendOv.mMsgCnt; ++idx)
     {
-        onSend(static_cast<utility::Message*>(sendOv.mSendMsgs[idx]));
-        MY_DELETE sendOv.mSendMsgs[idx];
+        utility::Message *msg = static_cast<utility::Message *>(sendOv.mSendMsgs[idx]);
+        onSend(msg);
+        MY_DELETE msg;
     }
+    sendOv.mMsgCnt = 0;
     registerSend(session);
 }
 void NetworkLib::completeRelease(Session &session)
 {
     session.ReleaseSession();
+    onRelease(session.mSessionID);
+
     stackSessionIdx_Push(session.mSessionID.Idx);
     registerAcceptEx();
 }
@@ -385,14 +415,14 @@ void NetworkLib::stackSessionIdx_Push(const ull &input)
     mStackSessionIdx.push(input);
 }
 
-bool NetworkLib::sessionLock(SeqAndIdx sessionID)
+bool NetworkLib::sessionLock(const SeqAndIdx &sessionID)
 {
     Session &session = mSessions[sessionID.Idx];
     short ioCnt = InterlockedIncrement16(&session.mIOcnt);
 
     if ((ioCnt & RELEASE_IOCOUNT) != 0)
     {
-        //이미 끊긴 연결
+        // 이미 끊긴 연결
         return false;
     }
     if (session.mSessionID != sessionID)
@@ -411,7 +441,7 @@ bool NetworkLib::sessionLock(SeqAndIdx sessionID)
     return true;
 }
 
-void NetworkLib::sessionUnLock(SeqAndIdx sessionID)
+void NetworkLib::sessionUnLock(const SeqAndIdx &sessionID)
 {
     Session &session = mSessions[sessionID.Idx];
     short ioCnt = InterlockedDecrement16(&session.mIOcnt);
@@ -422,14 +452,13 @@ void NetworkLib::sessionUnLock(SeqAndIdx sessionID)
             PostQueuedCompletionStatus(mHcp, 0, (ULONG_PTR)&session, session.mReleaseOv);
         }
     }
-    
 }
 
-void NetworkLib::SendPost(SeqAndIdx sessionID, utility::Message &msg)
+void NetworkLib::sendPost(const SeqAndIdx &sessionID, utility::Message &msg)
 {
     if (sessionLock(sessionID) == false)
     {
-        MY_DELETE &msg;
+        MY_DELETE & msg;
         return;
     }
     Session &session = mSessions[sessionID.Idx];
@@ -438,16 +467,16 @@ void NetworkLib::SendPost(SeqAndIdx sessionID, utility::Message &msg)
     if (_InterlockedCompareExchange8(&session.mSendFlag, true, false) == false)
     {
         _InterlockedIncrement16(&session.mIOcnt);
-        PostQueuedCompletionStatus(mHcp, 0, (ULONG_PTR) &session, session.mSendOv);
+        PostQueuedCompletionStatus(mHcp, 0, (ULONG_PTR)&session, session.mSendOv);
     }
 
     sessionUnLock(sessionID);
 }
 
-void NetworkLib::disconnectSession(SeqAndIdx sessionID)
+void NetworkLib::disconnectSession(const SeqAndIdx &sessionID)
 {
-    
-    if(sessionLock(sessionID) == false)
+
+    if (sessionLock(sessionID) == false)
     {
         return;
     }
@@ -458,7 +487,6 @@ void NetworkLib::disconnectSession(SeqAndIdx sessionID)
     CancelIoEx((HANDLE)session.mSock, session.mRecvOv);
 
     sessionUnLock(sessionID);
-
 }
 
 }; // namespace network

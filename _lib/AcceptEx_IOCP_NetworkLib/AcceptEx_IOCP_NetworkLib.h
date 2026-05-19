@@ -28,9 +28,9 @@ class NetworkLib
     void sendPost(const SeqAndIdx& sessionID, utility::Message &msg);
 
   public:
-    __int64 GetAcceptCount() { return mAcceptCnt; }
-    __int64 GetSendCount() { return mSendCnt; }
-    __int64 GetRecvCount() { return mRecvCnt; }
+    __int64 GetAcceptCount() const { return mAcceptCnt; }
+    __int64 GetSendCount() const { return mSendCnt; }
+    __int64 GetRecvCount() const { return mRecvCnt; }
   protected:
     void disconnectSession(const SeqAndIdx& sessionID);
 

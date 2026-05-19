@@ -3,6 +3,10 @@
 
 #include "EchoServer.h"
 #include "PacketCommon.h"
+#include <iomanip>
+#include <timeapi.h>
+
+#pragma comment(lib, "winmm.lib")
 
 namespace network
 {
@@ -11,6 +15,7 @@ EchoServer::EchoServer()
 {
     hEchoEvent = CreateEvent(nullptr, false, false, nullptr);
     mContentsThread = std::thread(&EchoServer::contentsThread, this);
+    mMonitorThread = std::thread(&EchoServer::monitorThread, this);
 }
 void EchoServer::onAccept(const SOCKADDR_IN &addr, const SeqAndIdx &sessionID)
 {
@@ -52,7 +57,8 @@ void EchoServer::onRelease(const SeqAndIdx &sessionID)
 void EchoServer::packProc(Message &msg)
 {
     __int64 ownerID = msg.GetOwnerID();
-    SeqAndIdx seqIdx{ownerID};
+    SeqAndIdx seqIdx;
+    seqIdx.Value = ownerID;
     {
         std::shared_lock<std::shared_mutex> slock(mPlayerMapLock);
         auto iter = mPlayerMap.find(ownerID);
@@ -116,11 +122,12 @@ void EchoServer::procEchoMessage(const SeqAndIdx &sessionID, Message &msg)
         sessionFK = iter->second->SessionFK;
     }
 
-    Header header{strLen + 2, rand() % 256};
+    Header header{strLen + 4, rand() % 256};
 
     msg.InitMessage(sessionID.Value, header.RandKey);
     msg.PutData(&header, sizeof(header));
     msg << static_cast<__int16>(ePacketType::SC_ECHO_RES);
+    msg << strLen;
     msg.PutData(buffer, strLen);
     msg.EnCoding(sessionFK);
 
@@ -145,23 +152,68 @@ void EchoServer::contentsThread()
     DWORD retval;
     while (1)
     {
-        retval = WaitForSingleObject(hEchoEvent, INFINITE);
+        retval = WaitForSingleObject(hEchoEvent, 1000);
         RT_ASSERT(retval != WAIT_FAILED);
         Message *msg;
 
         while (1)
         {
+            if (!popContentsQ(&msg))
             {
-                std::lock_guard<std::shared_mutex> lock(mQLock);
-                if (!popContentsQ(&msg))
-                {
-                    break;
-                }
+                break;
             }
+            
             RT_ASSERT(msg != nullptr);
             packProc(*msg);
         }
     }
+}
+
+void EchoServer::monitorThread()
+{
+    timeBeginPeriod(1);
+    //TODO : Server 종료 신호를 받고 종료되는 코드 만들기.
+    constexpr int timeInterver = 1000;
+
+    DWORD currentTime = timeGetTime();
+    DWORD nextTime = currentTime + timeInterver;
+    while (1)
+    {
+        currentTime = timeGetTime();
+        if (nextTime <= currentTime)
+        {
+            std::cout << *this;
+            nextTime += timeInterver;
+        }
+        else
+        {
+            Sleep(nextTime - currentTime);
+        }
+    }
+
+    timeEndPeriod(1);
+}
+
+std::ostream &operator<<(std::ostream &out, const EchoServer& server) 
+{
+    thread_local __int64 beforeAccept;
+    thread_local __int64 beforeRecv;
+    thread_local __int64 beforeSend;
+
+    __int64 currentAccept = server.GetAcceptCount();
+    __int64 currentRecv = server.GetRecvCount();
+    __int64 currentSend = server.GetSendCount();
+
+    out << std::setw(10) << "Total AcceptCnt : " << std::setw(10) << currentAccept << "\n";
+    out << std::setw(10) << " AcceptCnt TPS : " << std::setw(10) << currentAccept - beforeAccept << "\n";
+    out << std::setw(10) << " RecvCnt TPS : " << std::setw(10) << currentRecv - beforeRecv << "\n";
+    out << std::setw(10) << " SendCnt TPS : " << std::setw(10) << currentSend - beforeSend << "\n";
+
+    beforeAccept = currentAccept;
+    beforeRecv = currentRecv;
+    beforeSend = currentSend;
+
+    return out;
 }
 
 } // namespace network

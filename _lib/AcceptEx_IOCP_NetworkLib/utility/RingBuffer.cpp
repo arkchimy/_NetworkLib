@@ -18,7 +18,7 @@ namespace utility
 
     RingBuffer::~RingBuffer()
     {
-        MY_DELETE[] mBegin;
+        MY_DELETE mBegin;
     }
 
     ringBufferSize RingBuffer::GetUseSize() const

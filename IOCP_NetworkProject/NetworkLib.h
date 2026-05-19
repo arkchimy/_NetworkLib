@@ -1,6 +1,9 @@
 #pragma once
 
-#include <mutex>
+#define WIN32_LEAN_AND_MEAN // 거의 사용되지 않는 내용을 Windows 헤더에서 제외합니다.
+#pragma once
+
+#include <shared_mutex>
 #include <stack>
 #include <thread>
 
@@ -17,18 +20,20 @@ class NetworkLib
     virtual ~NetworkLib() = default;
 
   protected:
-    virtual void onAccept(const ull &sessionID) = 0;
+    virtual void onAccept(const SOCKADDR_IN &addr, const SeqAndIdx &sessionID) = 0;
     virtual void onRecv(utility::Message *msg) = 0;
     virtual void onSend(utility::Message *msg) = 0;
-    virtual void onRelease() = 0;
+    virtual void onRelease(const SeqAndIdx &sessionID) = 0;
 
-    void SendPost(SeqAndIdx sessionID,utility::Message& msg);
-    public:
-    //__int64 GetAcceptTPS() {};
-    //__int64 GetSendTPS() {};
-    //__int64 GetRecvTPS() {};
+    void sendPost(const SeqAndIdx &sessionID, utility::Message &msg);
+
+  public:
+    __int64 GetAcceptCount() const { return mAcceptCnt; }
+    __int64 GetSendCount() const { return mSendCnt; }
+    __int64 GetRecvCount() const { return mRecvCnt; }
+
   protected:
-    void disconnectSession(SeqAndIdx sessionID);
+    void disconnectSession(const SeqAndIdx &sessionID);
 
   private:
     void workerThread();
@@ -49,8 +54,8 @@ class NetworkLib
     bool stackSessionIdx_Pop(ull &out);
     void stackSessionIdx_Push(const ull &input);
 
-    bool sessionLock(SeqAndIdx sessionID);
-    void sessionUnLock(SeqAndIdx sessionID);
+    bool sessionLock(const SeqAndIdx &sessionID);
+    void sessionUnLock(const SeqAndIdx &sessionID);
 
   private:
     std::thread mWorkerThreads[CONFIG_WORKER_THREAD_CNT];
@@ -60,10 +65,13 @@ class NetworkLib
     Session mSessions[CONFIG_SESSION_MAX];
 
     std::stack<seqAddrType> mStackSessionIdx;
-    std::mutex mStackMutex;
+    std::shared_mutex mStackMutex;
 
     seqAddrType mSeqID = -1;
-    WsadataRAII wsadata;
+
+    __int64 mAcceptCnt;
+    __int64 mSendCnt;
+    __int64 mRecvCnt;
 };
 
 } // namespace network

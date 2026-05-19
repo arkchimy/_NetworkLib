@@ -21,7 +21,7 @@ Session::Session()
 
 Session::~Session()
 {
-    MY_DELETE[] mAcceptBuf;
+    MY_DELETE mAcceptBuf;
 
     MY_DELETE mAcceptOv;
     MY_DELETE mRecvOv;

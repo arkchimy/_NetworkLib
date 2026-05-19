@@ -167,6 +167,7 @@ void NetworkLib::registerAcceptEx()
 
     {
         ZeroMemory(session.mAcceptOv, sizeof(OVERLAPPED));
+        session.mAcceptOv->mSession = &session;
         DWORD recvByte;
         // AcceptEx 함수가 실패하면 AcceptEx 는 FALSE를 반환합니다.
         bool retval = AcceptEx(mListenSock, session.mSock, session.mAcceptBuf, 0,
@@ -233,7 +234,7 @@ void NetworkLib::registerRecv(Session &session)
     {
         ++bufCnt;
         wsabuf[1].buf = session.mRecvBuffer->GetBeginPtr();
-        wsabuf[1].len = freeSize - session.mRecvBuffer->DirectEnqueueSize();
+        wsabuf[1].len = freeSize - wsabuf[0].len;
     }
     ZeroMemory(session.mRecvOv, sizeof(OVERLAPPED));
 
@@ -361,9 +362,11 @@ void NetworkLib::completeSend(Session &session)
     // 완료통지에서 이미 보낸 MSG 반환.
     for (__int16 idx = 0; idx < sendOv.mMsgCnt; ++idx)
     {
-        onSend(static_cast<utility::Message *>(sendOv.mSendMsgs[idx]));
-        MY_DELETE sendOv.mSendMsgs[idx];
+        utility::Message *msg = static_cast<utility::Message *>(sendOv.mSendMsgs[idx]);
+        onSend(msg);
+        MY_DELETE msg;
     }
+    sendOv.mMsgCnt = 0;
     registerSend(session);
 }
 void NetworkLib::completeRelease(Session &session)

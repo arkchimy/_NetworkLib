@@ -3,5 +3,5 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="Echo_DummyClient.vcxproj" />
+  <Project Path="Echo_DummyClient.vcxproj" Id="0fcd2021-4df8-4f0a-9964-12e2c4121187" />
 </Solution>
