@@ -57,7 +57,7 @@ void DummyClient::clientThread()
 
     while (1)
     {
-
+        Sleep(0);
         utility::Message *msg[100];
         for (int i = 0; i < 100; i++)
         {
@@ -91,8 +91,22 @@ void DummyClient::clientThread()
             recv(sock, (char *)&recvType, sizeof(__int16), 0); // header
             recv(sock, (char *)&recvStrlen, sizeof(__int16), 0); // header
 
-            recv(sock, buffer, (int)recvStrlen, 0);
-        
+            int needLen = recvStrlen;
+            int recvRetval = 0;
+            char *pBuffer = buffer;
+            while (1)
+            {
+                needLen -= recvRetval;
+                pBuffer += recvRetval;
+                if (needLen == 0)
+                {
+                    break;
+                }
+                recvRetval = recv(sock, pBuffer , needLen, 0);
+                
+            }
+      
+
             {
                 __int16 len;
                 __int8 RK;
