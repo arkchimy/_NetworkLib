@@ -28,9 +28,9 @@ class NetworkLib
     void sendPost(const SeqAndIdx& sessionID, utility::Message &msg);
 
   public:
-    //__int64 GetAcceptTPS() {};
-    //__int64 GetSendTPS() {};
-    //__int64 GetRecvTPS() {};
+    __int64 GetAcceptCount() { return mAcceptCnt; }
+    __int64 GetSendCount() { return mSendCnt; }
+    __int64 GetRecvCount() { return mRecvCnt; }
   protected:
     void disconnectSession(const SeqAndIdx& sessionID);
 
@@ -67,6 +67,10 @@ class NetworkLib
     std::shared_mutex mStackMutex;
 
     seqAddrType mSeqID = -1;
+
+    __int64 mAcceptCnt;
+    __int64 mSendCnt;
+    __int64 mRecvCnt;
 };
 
 } // namespace network

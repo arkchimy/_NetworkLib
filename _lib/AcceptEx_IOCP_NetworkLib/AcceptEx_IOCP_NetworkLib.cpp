@@ -185,6 +185,7 @@ void NetworkLib::registerAcceptEx()
 
 void NetworkLib::completeAcceptEx(Session &session)
 {
+    InterlockedIncrement64(&mAcceptCnt);
 
     setsockopt(session.mSock, SOL_SOCKET, SO_UPDATE_ACCEPT_CONTEXT,
                reinterpret_cast<char *>(&mListenSock), sizeof(mListenSock));
@@ -207,6 +208,7 @@ void NetworkLib::completeAcceptEx(Session &session)
 
     onAccept(addr,session.mSessionID);
     registerRecv(session);
+
 
 }
 
@@ -250,6 +252,7 @@ void NetworkLib::registerRecv(Session &session)
 
 void NetworkLib::completeRecv(Session &session, DWORD transferred)
 {
+
     utility::RingBuffer &recvBuffer = *session.mRecvBuffer;
     recvBuffer.MoveRear(transferred);
 
@@ -290,6 +293,7 @@ void NetworkLib::completeRecv(Session &session, DWORD transferred)
             recvBuffer.MoveFront(header.Len);
 
             onRecv(msg);
+            InterlockedIncrement64(&mRecvCnt);
         }
         else
         {
@@ -352,6 +356,7 @@ void NetworkLib::registerSend(Session &session)
 void NetworkLib::completeSend(Session &session)
 {
     SendOv &sendOv = *session.mSendOv;
+    InterlockedAdd64(&mSendCnt, sendOv.mMsgCnt);
 
     // 완료통지에서 이미 보낸 MSG 반환.
     for (__int16 idx = 0; idx < sendOv.mMsgCnt; ++idx)
