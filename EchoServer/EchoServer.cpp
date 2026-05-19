@@ -129,6 +129,7 @@ void EchoServer::procEchoMessage(const SeqAndIdx &sessionID, Message &msg)
 
 bool EchoServer::popContentsQ(Message **msg)
 {
+    std::lock_guard<std::shared_mutex> lock(mQLock);
     if (mContentsQ.empty())
     {
         return false;

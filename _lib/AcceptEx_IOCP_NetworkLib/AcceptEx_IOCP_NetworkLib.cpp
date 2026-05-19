@@ -208,7 +208,7 @@ void NetworkLib::completeAcceptEx(Session &session)
     onAccept(addr,session.mSessionID);
     registerRecv(session);
 
-    registerAcceptEx();
+    //registerAcceptEx();
 }
 
 void NetworkLib::registerRecv(Session &session)

@@ -4,6 +4,7 @@
 
 #include <map>
 #include <queue>
+#pragma comment(lib, "AcceptEx_IOCP_NetworkLib.lib")
 
 namespace network
 {
