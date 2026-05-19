@@ -3,6 +3,6 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="../_lib/AcceptEx_IOCP_NetworkLib/AcceptEx_IOCP_NetworkLib.vcxproj" />
-  <Project Path="EchoServer.vcxproj" />
+  <Project Path="../_lib/AcceptEx_IOCP_NetworkLib/AcceptEx_IOCP_NetworkLib.vcxproj" Id="50cc943c-da7a-4670-b695-4f35da14bf9f" />
+  <Project Path="EchoServer.vcxproj" Id="d241c1db-4645-4f08-b05d-cd93c4b517fb" />
 </Solution>

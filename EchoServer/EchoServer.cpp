@@ -17,6 +17,14 @@ void EchoServer::onAccept(const SOCKADDR_IN &addr, const SeqAndIdx &sessionID)
     Player &player = *MY_NEW Player();
     player.Addr = addr;
     player.SessionID = sessionID;
+
+    {
+        std::lock_guard<std::shared_mutex> lock(mPlayerMapLock);
+        auto iter = mPlayerMap.find(sessionID.Value);
+        // 같은 sessionID로 두번연속 올수 없음.
+        RT_ASSERT(iter == mPlayerMap.end());
+        mPlayerMap.insert({sessionID.Value, &player});
+    }
 }
 void EchoServer::onRecv(utility::Message *msg)
 {
@@ -36,7 +44,9 @@ void EchoServer::onRelease(const SeqAndIdx &sessionID)
     auto iter = mPlayerMap.find(sessionID.Value);
 
     RT_ASSERT(iter != mPlayerMap.end());
+    Player *player = iter->second;
     mPlayerMap.erase(iter);
+    MY_DELETE player;
 }
 
 void EchoServer::packProc(Message &msg)
@@ -88,6 +98,7 @@ void EchoServer::procEchoMessage(const SeqAndIdx &sessionID, Message &msg)
     if (CONTENTS_MSG_MAX_SIZE < strLen)
     {
         disconnectSession(sessionID);
+        MY_DELETE & msg;
         return;
     }
     char buffer[CONTENTS_MSG_MAX_SIZE];
@@ -105,15 +116,16 @@ void EchoServer::procEchoMessage(const SeqAndIdx &sessionID, Message &msg)
         sessionFK = iter->second->SessionFK;
     }
 
-    Header header{strLen, rand() % 256};
+    Header header{strLen + 2, rand() % 256};
 
     msg.InitMessage(sessionID.Value, header.RandKey);
     msg.PutData(&header, sizeof(header));
+    msg << static_cast<__int16>(ePacketType::SC_ECHO_RES);
+    msg.PutData(buffer, strLen);
     msg.EnCoding(sessionFK);
 
     sendPost(sessionID, msg);
 }
-
 
 bool EchoServer::popContentsQ(Message **msg)
 {
@@ -134,9 +146,17 @@ void EchoServer::contentsThread()
     {
         retval = WaitForSingleObject(hEchoEvent, INFINITE);
         RT_ASSERT(retval != WAIT_FAILED);
-        Message *msg = nullptr;
-        while (popContentsQ(&msg))
+        Message *msg;
+
+        while (1)
         {
+            {
+                std::lock_guard<std::shared_mutex> lock(mQLock);
+                if (!popContentsQ(&msg))
+                {
+                    break;
+                }
+            }
             RT_ASSERT(msg != nullptr);
             packProc(*msg);
         }
