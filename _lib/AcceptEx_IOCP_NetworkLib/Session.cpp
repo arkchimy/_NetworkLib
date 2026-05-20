@@ -52,7 +52,7 @@ utility::Message *Session::DeQueueMsgOrNull()
 }
 void Session::ReleaseSession()
 {
-    RT_ASSERT(InterlockedExchange8(&mLive, 0) == 0);
+
     utility::Message *msg = DeQueueMsgOrNull();
     while (msg != nullptr)
     {

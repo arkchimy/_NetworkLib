@@ -129,7 +129,7 @@ void NetworkLib::workerThread()
         {
             if (InterlockedCompareExchange16(&session->mIOcnt, (short)(1 << 15), 0) == 0)
             {
-                PostQueuedCompletionStatus(mHcp, 0, key, session->mReleaseOv);
+                PostQueuedCompletionStatus(mHcp, 0, (ULONG_PTR)session, session->mReleaseOv);
             }
         }
     }
