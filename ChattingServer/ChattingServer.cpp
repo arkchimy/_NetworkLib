@@ -16,6 +16,8 @@ ChattingServer::ChattingServer()
     hEchoEvent = CreateEvent(nullptr, false, false, nullptr);
     mContentsThread = std::thread(&ChattingServer::contentsThread, this);
     mMonitorThread = std::thread(&ChattingServer::monitorThread, this);
+
+    start();
 }
 void ChattingServer::onAccept(const SOCKADDR_IN &addr, const SeqAndIdx &sessionID)
 {
@@ -51,17 +53,6 @@ void ChattingServer::onRelease(const SeqAndIdx &sessionID)
 
         RT_ASSERT(iter != mPlayerMap.end());
         player = iter->second;
-        mPlayerMap.erase(iter);
-    }
-    {
-        Player &refPlayer = *player;
-        Sector &sector = sectors[player->sectorX][player->sectorY];
-        std::lock_guard<std::shared_mutex> lock(sector.mMutex);
-        auto iter = sector.mPlayers.find(refPlayer.SessionID.Value);
-        if (iter != sector.mPlayers.end())
-        {
-            sector.mPlayers.erase(refPlayer.SessionID.Value);
-        }
     }
     // Why : Contents에서 Player에대한 접근이 이루어짐. 이떄 여기서 할당해제하면 댕글링
     Message *msg = MY_NEW(Message);
@@ -497,6 +488,14 @@ void ChattingServer::contentsThread()
             *msg >> playerPtr;
 
             Player *player = reinterpret_cast<Player *>(playerPtr);
+            {
+                std::lock_guard<std::shared_mutex> lock(mPlayerMapLock);
+                auto iter = mPlayerMap.find(player->SessionID.Value);
+
+                RT_ASSERT(iter != mPlayerMap.end());
+                RT_ASSERT(player == iter->second);
+                mPlayerMap.erase(iter);
+            }
             MY_DELETE player;
             MY_DELETE msg;
         }

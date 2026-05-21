@@ -67,12 +67,14 @@ NetworkLib::NetworkLib()
         registerAcceptEx();
     }
 
+}
+void NetworkLib::start()
+{
     for (int idx = 0; idx < CONFIG_WORKER_THREAD_CNT; ++idx)
     {
         mWorkerThreads[idx] = std::thread(&NetworkLib::workerThread, this);
     }
 }
-
 void NetworkLib::workerThread()
 {
     while (true)

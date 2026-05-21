@@ -20,6 +20,7 @@ class NetworkLib
     virtual ~NetworkLib() = default;
 
   protected:
+    void start();
     virtual void onAccept(const SOCKADDR_IN& addr, const SeqAndIdx &sessionID) = 0;
     virtual void onRecv(utility::Message *msg) = 0;
     virtual void onSend(utility::Message *msg) = 0;

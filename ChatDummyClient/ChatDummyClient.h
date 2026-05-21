@@ -42,7 +42,14 @@ class ChatDummyClient
 
 struct MyWsaData
 {
-    MyWsaData() { WSAStartup(MAKEWORD(2, 2), &wsa); }
+    MyWsaData()
+    {
+        int retval = WSAStartup(MAKEWORD(2, 2), &wsa);
+        if (retval != 0)
+        {
+            __debugbreak();
+        }
+    }
     ~MyWsaData() { WSACleanup(); }
     WSADATA wsa;
 };

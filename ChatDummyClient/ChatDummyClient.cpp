@@ -135,7 +135,7 @@ bool ChatDummyClient::loginFlow(SOCKET sock, __int64 accountNo, __int32 &outSeqN
 {
     PktCS_Login pkt{};
     pkt.hdr.Len    = static_cast<__int16>(sizeof(PktCS_Login) - sizeof(PktHeader));  // 14
-    pkt.hdr.RandKey = 0xFF;
+    pkt.hdr.RandKey = '\xFF';
     pkt.type       = static_cast<__int16>(ePacketType::CS_LOGIN);
     pkt.seqNum     = (__int32)0xfdfdfdfd;
     pkt.accountNo  = accountNo;
@@ -158,7 +158,7 @@ bool ChatDummyClient::authFlow(SOCKET sock, __int32 &seqNum, __int8 &outX, __int
 {
     PktCS_Auth pkt{};
     pkt.hdr.Len    = static_cast<__int16>(sizeof(PktCS_Auth) - sizeof(PktHeader));  // 46
-    pkt.hdr.RandKey = 0xFF;
+    pkt.hdr.RandKey = '\xFF';
     pkt.type       = static_cast<__int16>(ePacketType::CS_AUTH);
     pkt.seqNum     = seqNum;
     wcscpy_s(pkt.nickname, 20, L"Bot");
@@ -191,7 +191,7 @@ bool ChatDummyClient::mainLoop(SOCKET sock, __int32 &seqNum, __int8 &sectorX, __
 
             PktCS_Move pkt{};
             pkt.hdr.Len    = static_cast<__int16>(sizeof(PktCS_Move) - sizeof(PktHeader));  // 8
-            pkt.hdr.RandKey = 0xFF;
+            pkt.hdr.RandKey = '\xFF';
             pkt.type       = static_cast<__int16>(ePacketType::CS_MOVE);
             pkt.seqNum     = seqNum;
             pkt.sectorX    = newX;
@@ -208,7 +208,7 @@ bool ChatDummyClient::mainLoop(SOCKET sock, __int32 &seqNum, __int8 &sectorX, __
         {
             PktCS_Chat pkt{};
             pkt.hdr.Len    = static_cast<__int16>(sizeof(PktCS_Chat) - sizeof(PktHeader));  // 12
-            pkt.hdr.RandKey = 0xFF;
+            pkt.hdr.RandKey = '\xFF';
             pkt.type       = static_cast<__int16>(ePacketType::CS_CHAT);
             pkt.seqNum     = seqNum;
             pkt.msgLen     = 2;
