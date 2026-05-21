@@ -1,11 +1,12 @@
 #pragma once
 
-#include "AcceptEx_IOCP_NetworkLib/AcceptEx_IOCP_NetworkLib.h"
-
 #include <iostream>
 #include <map>
 #include <queue>
 #include <unordered_map>
+
+#include "AcceptEx_IOCP_NetworkLib/AcceptEx_IOCP_NetworkLib.h"
+#include "ChattingServerConfig.h"
 
 namespace network
 {
@@ -38,7 +39,6 @@ struct Player
     bool bAuth;
     wchar_t Nickname[20];
     DWORD lastTime;
-
 };
 struct Sector
 {
@@ -67,9 +67,12 @@ class ChattingServer : public NetworkLib
     void packetProc(Message &msg, Player &player);
 
     eRedisResult getFixedKeyFromRedis(const __int64 accountNo, __int8 &FK);
+    void moveSector(__int64 sessionID, const __int8 beforeX, const __int8 beforeY, const __int8 x, const __int8 y);
+    void aroundLockAndSendMsg(__int16 x, __int16 y, wchar_t Nickname[20], __int16 MessageLen, wchar_t *const buffer);
 
     void makeLoginMessage(const __int8 FK, const eRedisResult &result, const __int32 seqNumber, const __int64 sessionID, Message &msg);
-    void makeAuthMessage(const __int8 FK, const __int64 sessionID, const __int16 SectorX, const __int16 SectorY, Message &msg);
+    void makeAuthMessage(const __int8 FK, const __int64 sessionID, const __int8 SectorX, const __int8 SectorY, Message &msg);
+    void makeChatMessage(const __int8 FK, const __int64 sessionID, wchar_t Nickname[20], __int16 MessageLen, wchar_t *const buffer, Message &msg);
 
     void loginProc(Message &msg, Player &player);
     void authProc(Message &msg, Player &player);

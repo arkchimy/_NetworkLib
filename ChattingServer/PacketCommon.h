@@ -38,8 +38,8 @@ enum class ePacketType : __int16
     //{
     //  __int16 Type
     // 
-    //  __int16 SectorX
-    //  __int16 SectorY
+    //  __int8 SectorX
+    //  __int8 SectorY
     //}  초기 생성 위치. 그리고 실패시 server에서는 보낸것 확인 후 끊기
 
     CS_MOVE = 4,
@@ -47,8 +47,8 @@ enum class ePacketType : __int16
     //  __int16    Type
     // 
     //  __int32 SeqNumber
-    //  __int16 SectorX
-    //  __int16 SectorY
+    //  __int8 SectorX
+    //  __int8 SectorY
     //}
 
     CS_CHAT = 5,

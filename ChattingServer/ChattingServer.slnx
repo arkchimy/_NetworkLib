@@ -3,6 +3,6 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="../_lib/AcceptEx_IOCP_NetworkLib/AcceptEx_IOCP_NetworkLib.vcxproj" />
-  <Project Path="ChattingServer.vcxproj" />
+  <Project Path="../_lib/AcceptEx_IOCP_NetworkLib/AcceptEx_IOCP_NetworkLib.vcxproj" Id="50cc943c-da7a-4670-b695-4f35da14bf9f" />
+  <Project Path="ChattingServer.vcxproj" Id="0eb42297-0002-4702-b198-9fb5c046f9a7" />
 </Solution>

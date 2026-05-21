@@ -67,7 +67,6 @@ void ChattingServer::onRelease(const SeqAndIdx &sessionID)
     Message *msg = MY_NEW(Message);
     *msg << reinterpret_cast<__int64>(player);
     pushDeferredQ(*msg);
-
 }
 bool ChattingServer::popContentsQ(Message **msg)
 {
@@ -186,6 +185,82 @@ eRedisResult ChattingServer::getFixedKeyFromRedis(__int64 accountNo, __int8 &FK)
     return eRedisResult::Redis_Success;
 }
 
+void ChattingServer::moveSector(__int64 sessionID, const __int8 beforeX, const __int8 beforeY, const __int8 x, const __int8 y)
+{
+    __int16 before = beforeX * 50 + beforeY;
+    __int16 after = x * 50 + y;
+    Sector &beforeSector = sectors[beforeX][beforeY];
+    Sector &afterSector = sectors[x][y];
+
+    if (before < after)
+    {
+        std::lock_guard<std::shared_mutex> xlock1(beforeSector.mMutex);
+        std::lock_guard<std::shared_mutex> xlock2(afterSector.mMutex);
+
+        auto iter = beforeSector.mPlayers.find(sessionID);
+        RT_ASSERT(iter != beforeSector.mPlayers.end());
+        Player &player = *iter->second;
+        beforeSector.mPlayers.erase(iter);
+
+        auto iter2 = afterSector.mPlayers.find(sessionID);
+        RT_ASSERT(iter2 == afterSector.mPlayers.end());
+        afterSector.mPlayers.insert({sessionID, &player});
+        player.sectorX = x;
+        player.sectorY = y;
+    }
+    else
+    {
+        std::lock_guard<std::shared_mutex> xlock2(afterSector.mMutex);
+        std::lock_guard<std::shared_mutex> xlock1(beforeSector.mMutex);
+
+        auto iter = beforeSector.mPlayers.find(sessionID);
+        RT_ASSERT(iter != beforeSector.mPlayers.end());
+        Player &player = *iter->second;
+        beforeSector.mPlayers.erase(iter);
+
+        auto iter2 = afterSector.mPlayers.find(sessionID);
+        RT_ASSERT(iter2 == afterSector.mPlayers.end());
+        afterSector.mPlayers.insert({sessionID, &player});
+        player.sectorX = x;
+        player.sectorY = y;
+    }
+    
+}
+
+void ChattingServer::aroundLockAndSendMsg(__int16 x, __int16 y, wchar_t Nickname[20], __int16 MessageLen, wchar_t *const buffer)
+{
+    __int16 dx[] = {-1, -1, -1, +0, 0, 0, +1, 1, 1};
+    __int16 dy[] = {-1, +0, +1, -1, 0, 1, -1, 0, 1};
+
+    std::vector<std::shared_lock<std::shared_mutex>> vec;
+    std::vector<std::pair<__int16, __int16>> pos;
+    vec.reserve(9);
+    pos.reserve(9);
+    int vecSize = 0;
+    for (__int16 loop = 0; loop < 9; ++loop)
+    {
+        __int16 rx = x + dx[loop];
+        __int16 ry = y + dy[loop];
+        if (rx < 0 || ry < 0 || 50 <= rx || 50 <= ry)
+        {
+            continue;
+        }
+        ++vecSize;
+        vec.emplace_back(sectors[rx][ry].mMutex);
+        pos.emplace_back(std::make_pair(rx, ry));
+    }
+    for (int idx = 0; idx < vecSize; ++idx)
+    {
+        for (auto hash : sectors[pos[idx].first][pos[idx].second].mPlayers)
+        {
+            Player &player = *hash.second;
+            Message *msg = MY_NEW Message();
+            makeChatMessage(player.SessionFK, player.SessionID.Value, Nickname, MessageLen, buffer, *msg);
+            sendPost(player.SessionID, *msg);
+        }
+    }
+}
+
 void ChattingServer::makeLoginMessage(const __int8 FK, const eRedisResult &result, const __int32 seqNumber, const __int64 sessionID, Message &msg)
 {
     //{
@@ -211,11 +286,9 @@ void ChattingServer::makeLoginMessage(const __int8 FK, const eRedisResult &resul
     msg.EnCoding(FK);
 }
 
-void ChattingServer::makeAuthMessage(const __int8 FK, const __int64 sessionID, const __int16 SectorX, const __int16 SectorY, Message &msg)
+void ChattingServer::makeAuthMessage(const __int8 FK, const __int64 sessionID, const __int8 SectorX, const __int8 SectorY, Message &msg)
 {
     //{
-    //  __int16 Type
-    //
     //  __int16 SectorX
     //  __int16 SectorY
     //}  초기 생성 위치. 그리고 실패시 server에서는 보낸것 확인 후 끊기
@@ -235,17 +308,42 @@ void ChattingServer::makeAuthMessage(const __int8 FK, const __int64 sessionID, c
 
     msg.EnCoding(FK);
 }
+void ChattingServer::makeChatMessage(const __int8 FK, const __int64 sessionID, wchar_t Nickname[20], __int16 MessageLen, wchar_t *const buffer, Message &msg)
+{
+    //{
+    //  wchar_t Nickname[20]
+    //  __int16 MessageLen
+    //  wchar_t Message[MessageLen]
+    //}
+    __int16 type = static_cast<__int16>(ePacketType::SC_CHAT);
+
+    __int8 RK = rand() % UCHAR_MAX + 1;
+    msg.InitMessage(sessionID, RK);
+
+    Header header;
+    header.Len = static_cast<__int16>(sizeof(type) + sizeof(wchar_t) * CONFIG_NICKNAME_LEN + sizeof(MessageLen) + sizeof(wchar_t) * MessageLen);
+    header.RandKey = RK;
+
+    msg.PutData(&header, sizeof(header));
+
+    msg << type;
+    msg.PutData(Nickname, sizeof(wchar_t) * CONFIG_NICKNAME_LEN);
+    msg << MessageLen;
+    msg.PutData(buffer, MessageLen * sizeof(wchar_t));
+
+    msg.EnCoding(FK);
+}
 void ChattingServer::loginProc(Message &msg, Player &player)
 {
     //{
-    //  __int16    Type
-    //
     //  __int64 AccountNo
     //} 첫 메세지는 초기 고정키로 암호화
     //  서버에서 Redis에서 AccountNo를 통해SessionKey 탐색 시도
 
     __int64 accountNo;
     msg >> accountNo;
+    size_t useSize = msg.GetUseSize();
+    RT_ASSERT(useSize == 0);
     // TODO : Redis에서 FK값을 가져와 회신하기.
     __int8 FK;
     eRedisResult bRetval = getFixedKeyFromRedis(accountNo, FK);
@@ -265,12 +363,15 @@ void ChattingServer::authProc(Message &msg, Player &player)
     if (player.bAuth == true)
     {
         disconnectSession(player.SessionID);
-        MY_DELETE &msg;
+        MY_DELETE & msg;
         return;
     }
     wchar_t Nickname[20]{0};
     // 2번째 매개변수가 Byte 단위임
     msg.GetData(Nickname, 40);
+    size_t useSize = msg.GetUseSize();
+    RT_ASSERT(useSize == 0);
+
     memcpy_s(player.Nickname, sizeof(player.Nickname), Nickname, sizeof(Nickname));
 
     __int8 SectorX = rand() % 50;
@@ -285,7 +386,6 @@ void ChattingServer::authProc(Message &msg, Player &player)
         RT_ASSERT(iter == sector.mPlayers.end());
         sector.mPlayers.insert({player.SessionID.Value, &player});
     }
-
     makeAuthMessage(player.SessionFK, player.SessionID.Value, SectorX, SectorY, msg);
     sendPost(player.SessionID, msg);
 }
@@ -298,6 +398,36 @@ void ChattingServer::moveSectorProc(Message &msg, Player &player)
         MY_DELETE & msg;
         return;
     }
+    //{
+    //  __int8 SectorX
+    //  __int8 SectorY
+    //}
+    __int8 SectorX;
+    __int8 SectorY;
+
+    msg >> SectorX;
+    msg >> SectorY;
+    size_t useSize = msg.GetUseSize();
+    RT_ASSERT(useSize == 0);
+    // 조작된 패킷 or 잘못된 패킷
+    if (0 > SectorX || 50 <= SectorX)
+    {
+        disconnectSession(player.SessionID);
+    }
+    else if (0 > SectorY || 50 <= SectorY)
+    {
+        disconnectSession(player.SessionID);
+    }
+    // 공격 의심
+    else if (SectorX == player.sectorX && SectorY == player.sectorY)
+    {
+        disconnectSession(player.SessionID);
+    }
+    else
+    {
+        moveSector(player.SessionID.Value, player.sectorX, player.sectorY, SectorX, SectorY);
+    }
+    MY_DELETE & msg;
 }
 
 void ChattingServer::chatMessageProc(Message &msg, Player &player)
@@ -308,6 +438,27 @@ void ChattingServer::chatMessageProc(Message &msg, Player &player)
         MY_DELETE & msg;
         return;
     }
+    //{
+    //  __int16 MessageLen
+    //  wchar_t Message[MessageLen]
+    //}
+    __int16 MessageLen;
+    wchar_t Message[CONFIG_MSG_MAX_LEN];
+    msg >> MessageLen;
+
+    // 범위를 벗어남.
+    if (CONFIG_MSG_MAX_LEN < MessageLen || MessageLen <= 0)
+    {
+        disconnectSession(player.SessionID);
+        MY_DELETE & msg;
+        return;
+    }
+    msg.GetData(Message, MessageLen * 2);
+    size_t useSize = msg.GetUseSize();
+    RT_ASSERT(useSize == 0);
+    MY_DELETE & msg;
+
+    aroundLockAndSendMsg(player.sectorX, player.sectorY, player.Nickname, MessageLen,Message);
 }
 
 void ChattingServer::contentsThread()
@@ -318,7 +469,6 @@ void ChattingServer::contentsThread()
         retval = WaitForSingleObject(hEchoEvent, 1000);
         RT_ASSERT(retval != WAIT_FAILED);
         Message *msg;
-
         while (1)
         {
             if (!popContentsQ(&msg))
@@ -335,7 +485,7 @@ void ChattingServer::contentsThread()
             }
             packetProc(*msg, *player);
         }
-        //지연 삭제
+        // 지연 삭제
         while (1)
         {
             if (!popDeferredQ(&msg))
@@ -374,7 +524,6 @@ void ChattingServer::monitorThread()
             Sleep(nextTime - currentTime);
         }
     }
-
     timeEndPeriod(1);
 }
 
