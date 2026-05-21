@@ -22,7 +22,6 @@ void ChattingServer::onAccept(const SOCKADDR_IN &addr, const SeqAndIdx &sessionI
     Player &player = *MY_NEW Player();
     player.Addr = addr;
     player.SessionID = sessionID;
-
     {
         std::lock_guard<std::shared_mutex> lock(mPlayerMapLock);
         auto iter = mPlayerMap.find(sessionID.Value);
@@ -64,6 +63,7 @@ void ChattingServer::onRelease(const SeqAndIdx &sessionID)
             sector.mPlayers.erase(refPlayer.SessionID.Value);
         }
     }
+    // Why : Contents에서 Player에대한 접근이 이루어짐. 이떄 여기서 할당해제하면 댕글링
     Message *msg = MY_NEW(Message);
     *msg << reinterpret_cast<__int64>(player);
     pushDeferredQ(*msg);
@@ -339,11 +339,11 @@ void ChattingServer::loginProc(Message &msg, Player &player)
     //  __int64 AccountNo
     //} 첫 메세지는 초기 고정키로 암호화
     //  서버에서 Redis에서 AccountNo를 통해SessionKey 탐색 시도
-
     __int64 accountNo;
     msg >> accountNo;
     size_t useSize = msg.GetUseSize();
     RT_ASSERT(useSize == 0);
+
     // TODO : Redis에서 FK값을 가져와 회신하기.
     __int8 FK;
     eRedisResult bRetval = getFixedKeyFromRedis(accountNo, FK);

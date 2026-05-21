@@ -45,6 +45,8 @@ NetworkLib::NetworkLib()
         char optval = 0;
         setsockopt(mListenSock, SOL_SOCKET, SO_SNDBUF, &optval, 0);
     }
+    linger rst{1,0};
+    setsockopt(mListenSock, SOL_SOCKET, SO_LINGER, (char *)&rst, sizeof(rst));
 
     int retval = bind(mListenSock, reinterpret_cast<const sockaddr *>(&addr), sizeof(addr));
     RT_ASSERT(retval != SOCKET_ERROR);
