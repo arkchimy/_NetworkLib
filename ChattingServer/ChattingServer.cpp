@@ -54,6 +54,7 @@ void ChattingServer::onRelease(const SeqAndIdx &sessionID)
         RT_ASSERT(iter != mPlayerMap.end());
         player = iter->second;
     }
+
     // Why : Contents에서 Player에대한 접근이 이루어짐. 이떄 여기서 할당해제하면 댕글링
     Message *msg = MY_NEW(Message);
     *msg << reinterpret_cast<__int64>(player);
