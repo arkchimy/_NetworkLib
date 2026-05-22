@@ -1,8 +1,10 @@
 #include "ChattingServer.h"
-
+#include "CrushDump_lib/CrushDump_lib.h"
 using namespace network;
 int main()
 {
+    CDump::SetHandlerDump();
+    
     ChattingServer *server = new ChattingServer();
 
     //TODO : 종료 기능 구현하기.

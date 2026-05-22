@@ -30,6 +30,7 @@ void ChattingServer::onAccept(const SOCKADDR_IN &addr, const SeqAndIdx &sessionI
         // 같은 sessionID로 두번연속 올수 없음.
         RT_ASSERT(iter == mPlayerMap.end());
         mPlayerMap.insert({sessionID.Value, &player});
+        mUserCnt = mPlayerMap.size();
     }
 }
 void ChattingServer::onRecv(utility::Message *msg)
@@ -61,6 +62,7 @@ void ChattingServer::onRelease(const SeqAndIdx &sessionID)
     *msg << reinterpret_cast<__int64>(player);
 
     pushDeferredQ(*msg);
+    SetEvent(hEchoEvent);
 }
 bool ChattingServer::popContentsQ(Message **msg)
 {
@@ -473,24 +475,8 @@ void ChattingServer::contentsThread()
     while (1)
     {
         retval = WaitForSingleObject(hEchoEvent, 1000);
+        Message *msg = nullptr;
         RT_ASSERT(retval != WAIT_FAILED);
-        Message *msg;
-        while (1)
-        {
-            if (!popContentsQ(&msg))
-            {
-                break;
-            }
-
-            RT_ASSERT(msg != nullptr);
-            Player *player = validatePlayerOrNull(*msg);
-            if (player == nullptr)
-            {
-                MY_DELETE msg;
-                continue;
-            }
-            packetProc(*msg, *player);
-        }
         // 지연 삭제
         while (1)
         {
@@ -510,6 +496,7 @@ void ChattingServer::contentsThread()
                 RT_ASSERT(iter != mPlayerMap.end());
                 RT_ASSERT(player == iter->second);
                 mPlayerMap.erase(iter);
+                mUserCnt = static_cast<short>(mPlayerMap.size());
             }
             {
                 std::lock_guard<std::shared_mutex> lock(sectors[player->sectorX][player->sectorY].mMutex);
@@ -518,6 +505,25 @@ void ChattingServer::contentsThread()
             MY_DELETE player;
             MY_DELETE msg;
         }
+        
+        msg = nullptr;
+        while (1)
+        {
+            if (!popContentsQ(&msg))
+            {
+                break;
+            }
+
+            RT_ASSERT(msg != nullptr);
+            Player *player = validatePlayerOrNull(*msg);
+            if (player == nullptr)
+            {
+                MY_DELETE msg;
+                continue;
+            }
+            packetProc(*msg, *player);
+        }
+   
     }
 }
 
@@ -554,12 +560,13 @@ std::ostream &operator<<(std::ostream &out, const ChattingServer &server)
     __int64 currentAccept = server.GetAcceptCount();
     __int64 currentRecv = server.GetRecvCount();
     __int64 currentSend = server.GetSendCount();
-
+    out << "===============================================================\n";
     out << std::setw(10) << "Total AcceptCnt : " << std::setw(10) << currentAccept << "\n";
     out << std::setw(10) << " AcceptCnt TPS : " << std::setw(10) << currentAccept - beforeAccept << "\n";
     out << std::setw(10) << " RecvCnt TPS : " << std::setw(10) << currentRecv - beforeRecv << "\n";
     out << std::setw(10) << " SendCnt TPS : " << std::setw(10) << currentSend - beforeSend << "\n";
-
+    out << std::setw(10) << " UserCnt : " << std::setw(10) << server.mUserCnt << "\n";
+    out << "===============================================================\n";
     beforeAccept = currentAccept;
     beforeRecv = currentRecv;
     beforeSend = currentSend;

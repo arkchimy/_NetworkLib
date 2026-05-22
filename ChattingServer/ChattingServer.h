@@ -99,6 +99,7 @@ class ChattingServer : public NetworkLib
     std::shared_mutex mPlayerMapLock;
     std::map<__int64, Player *> mPlayerMap;
 
+    short mUserCnt;
     Sector sectors[50][50];
 };
 } // namespace network

@@ -477,6 +477,12 @@ bool NetworkLib::sessionLock(const SeqAndIdx& sessionID)
     if (session.mSessionID != sessionID)
     {
         // 대상이 다름.
+        short ioCnt = InterlockedDecrement16(&session.mIOcnt);
+        if (InterlockedCompareExchange16(&session.mIOcnt, RELEASE_IOCOUNT, 0) == 0)
+        {
+            ZeroMemory(session.mReleaseOv, sizeof(OVERLAPPED));
+            PostQueuedCompletionStatus(mHcp, 0, (ULONG_PTR)&session, session.mReleaseOv);
+        }
         return false;
     }
 
