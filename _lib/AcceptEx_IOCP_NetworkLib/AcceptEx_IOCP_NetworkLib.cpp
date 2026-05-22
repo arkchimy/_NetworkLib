@@ -83,6 +83,7 @@ void NetworkLib::workerThread()
         ULONG_PTR key = 0;
         OVERLAPPED *overlapped = nullptr;
         Session *session = nullptr;
+        MyOverlapped *ov;
         GetQueuedCompletionStatus(mHcp, &transferred, &key, &overlapped, INFINITE);
         {
             // 종료 메세지
@@ -90,7 +91,7 @@ void NetworkLib::workerThread()
             {
                 break;
             }
-            MyOverlapped *ov = static_cast<MyOverlapped *>(overlapped);
+            ov = static_cast<MyOverlapped *>(overlapped);
             session = reinterpret_cast<Session *>(key);
 
             switch (ov->GetMode())
@@ -122,6 +123,7 @@ void NetworkLib::workerThread()
             case eComplete::COMPLETE_RELEASE:
             {
                 completeRelease(*session);
+                continue;
             }
             break;
             default:
@@ -129,10 +131,38 @@ void NetworkLib::workerThread()
             }
         }
         short ioCount = InterlockedDecrement16(&session->mIOcnt);
+        switch (ov->GetMode())
+        {
+        case eComplete::COMPLETE_ACCEPT:
+        {
+            //std::cout << "COMPLETE_ACCEPT" << "IOCOUNT : " << ioCount << "\n";
+        }
+        break;
+
+        case eComplete::COMPLETE_RECV:
+        {
+            //std::cout << "COMPLETE_RECV" << "IOCOUNT : " << ioCount << "\n";
+        }
+        break;
+        case eComplete::COMPLETE_SEND:
+        {
+            //std::cout << "COMPLETE_SEND" << "IOCOUNT : " << ioCount << "\n";
+        }
+        break;
+        case eComplete::COMPLETE_RELEASE:
+        {
+            //std::cout << "COMPLETE_RELEASE" << "IOCOUNT : " << ioCount << "\n";
+            continue;
+        }
+        break;
+        default:
+            RT_ASSERT(FALSE);
+        }
         if (ioCount == 0)
         {
-            if (InterlockedCompareExchange16(&session->mIOcnt, (short)(1 << 15), 0) == 0)
+            if (InterlockedCompareExchange16(&session->mIOcnt, RELEASE_IOCOUNT, 0) == 0)
             {
+                ZeroMemory(session->mReleaseOv, sizeof(OVERLAPPED));
                 PostQueuedCompletionStatus(mHcp, 0, (ULONG_PTR)session, session->mReleaseOv);
             }
         }
@@ -206,7 +236,8 @@ void NetworkLib::completeAcceptEx(Session &session)
     InterlockedExchange8(&session.mLive, true);
     InterlockedExchange64(&session.mSessionID.Value, seqIdx.Value);
     InterlockedExchange16(&session.mIOcnt, 1);
-
+    //std::cout << "COMPLETE_ACCEPT" << "IOCOUNT : " << 1 << "\n";
+    //std::cout << "Accecpt : " << "session_sock : " << session.mSock << "ID:" << session.mSessionID.Value << "\n";
     SOCKADDR_IN addr;
     int nameLen = sizeof(addr);
     getpeername(session.mSock, (sockaddr *)&addr, &nameLen);
@@ -245,7 +276,8 @@ void NetworkLib::registerRecv(Session &session)
     if (session.mLive)
     {
         DWORD Flags = 0;
-        InterlockedIncrement16(&session.mIOcnt);
+        short ioCount = InterlockedIncrement16(&session.mIOcnt);
+        //std::cout << "Resigte_Recv" << "IOCOUNT : " << ioCount << "\n";
         // 수신 작업이 즉시 완료되면 WSARecv 는 0을 반환합니다.그렇지 않으면 SOCKET_ERROR 값이 반환되
         int recvRetval = WSARecv(session.mSock, wsabuf, bufCnt, NULL, &Flags, session.mRecvOv, NULL);
         if (recvRetval == SOCKET_ERROR)
@@ -253,6 +285,7 @@ void NetworkLib::registerRecv(Session &session)
             checkAndHandleIoError(session, WSAGetLastError());
         }
     }
+
 }
 
 void NetworkLib::completeRecv(Session &session, DWORD transferred)
@@ -323,7 +356,8 @@ void NetworkLib::registerSend(Session &session)
             if (_InterlockedCompareExchange8(&session.mSendFlag, true, false) == false)
             {
                 ZeroMemory(&sendOv, sizeof(OVERLAPPED));
-                InterlockedIncrement16(&session.mIOcnt);
+                short ioCount = InterlockedIncrement16(&session.mIOcnt);
+                //std::cout << "UseZero PQCS" << "IOCOUNT : " << ioCount << "\n";
                 PostQueuedCompletionStatus(mHcp, 0, (ULONG_PTR)&session, session.mSendOv);
             }
         }
@@ -349,7 +383,8 @@ void NetworkLib::registerSend(Session &session)
     if (session.mLive)
     {
         DWORD Flags = 0;
-        InterlockedIncrement16(&session.mIOcnt);
+        short ioCount = InterlockedIncrement16(&session.mIOcnt);
+        //std::cout << "Resigte Send" << "IOCOUNT : " << ioCount << "\n";
         int sendRetval = WSASend(session.mSock, wsabuf, msgCnt, NULL, Flags, &sendOv, NULL);
         if (sendRetval == SOCKET_ERROR)
         {
@@ -375,6 +410,7 @@ void NetworkLib::completeSend(Session &session)
 }
 void NetworkLib::completeRelease(Session &session)
 {
+    //std::cout << "Release " << "session_sock : " << session.mSock << "ID:" << session.mSessionID.Value << "\n";
     session.ReleaseSession();
     onRelease(session.mSessionID);
 
@@ -398,8 +434,11 @@ void NetworkLib::checkAndHandleIoError(Session &session, const int lastError)
     case WSAECONNABORTED: //    10053 :
 
     case WSAECONNRESET: // 10054:
+    {
         InterlockedExchange8(&session.mLive, false);
-        _InterlockedDecrement16(&session.mIOcnt);
+        short ioCount = _InterlockedDecrement16(&session.mIOcnt);
+        //std::cout << "WSAError" << "IOCOUNT : " << ioCount << "\n";
+    }
         break;
 
     default:
@@ -438,16 +477,9 @@ bool NetworkLib::sessionLock(const SeqAndIdx& sessionID)
     if (session.mSessionID != sessionID)
     {
         // 대상이 다름.
-        ioCnt = InterlockedDecrement16(&session.mIOcnt);
-        if (ioCnt == 0)
-        {
-            if (InterlockedCompareExchange16(&session.mIOcnt, RELEASE_IOCOUNT, 0) == 0)
-            {
-                PostQueuedCompletionStatus(mHcp, 0, (ULONG_PTR)&session, session.mReleaseOv);
-            }
-        }
         return false;
     }
+
     return true;
 }
 
@@ -459,6 +491,7 @@ void NetworkLib::sessionUnLock(const SeqAndIdx& sessionID)
     {
         if (InterlockedCompareExchange16(&session.mIOcnt, RELEASE_IOCOUNT, 0) == 0)
         {
+            ZeroMemory(session.mReleaseOv,sizeof(OVERLAPPED));
             PostQueuedCompletionStatus(mHcp, 0, (ULONG_PTR)&session, session.mReleaseOv);
         }
     }
@@ -476,7 +509,9 @@ void NetworkLib::sendPost(const SeqAndIdx& sessionID, utility::Message &msg)
 
     if (_InterlockedCompareExchange8(&session.mSendFlag, true, false) == false)
     {
-        _InterlockedIncrement16(&session.mIOcnt);
+        short ioCount = _InterlockedIncrement16(&session.mIOcnt);
+        //std::cout << "sendPost" << "IOCOUNT : " << ioCount << "\n";
+        ZeroMemory(session.mSendOv, sizeof(OVERLAPPED));
         PostQueuedCompletionStatus(mHcp, 0, (ULONG_PTR)&session, session.mSendOv);
     }
 

@@ -52,7 +52,6 @@ utility::Message *Session::DeQueueMsgOrNull()
 }
 void Session::ReleaseSession()
 {
-
     utility::Message *msg = DeQueueMsgOrNull();
     while (msg != nullptr)
     {

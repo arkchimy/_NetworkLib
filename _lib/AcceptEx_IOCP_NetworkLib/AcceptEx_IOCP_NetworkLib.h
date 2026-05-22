@@ -12,7 +12,7 @@
 
 namespace network
 {
-constexpr short RELEASE_IOCOUNT = static_cast<short>(1 << 15);
+constexpr short RELEASE_IOCOUNT = static_cast<short>(1 << 14);
 class NetworkLib
 {
   public:

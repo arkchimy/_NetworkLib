@@ -140,13 +140,17 @@ bool ChatDummyClient::loginFlow(SOCKET sock, __int64 accountNo, __int32 &outSeqN
     pkt.seqNum     = (__int32)0xfdfdfdfd;
     pkt.accountNo  = accountNo;
 
-    if (!safeSend(sock, (char *)&pkt, sizeof(pkt))) return false;
+    if (!safeSend(sock, (char *)&pkt, sizeof(pkt))) 
+        return false;
 
     PktSC_Login resp{};
-    if (!safeRecv(sock, (char *)&resp, sizeof(resp))) return false;
+    if (!safeRecv(sock, (char *)&resp, sizeof(resp))) 
+        return false;
 
-    if (resp.type != static_cast<__int16>(ePacketType::SC_LOGIN)) return false;
-    if (resp.result == 0) return false;  // Redis_No_Data
+    if (resp.type != static_cast<__int16>(ePacketType::SC_LOGIN)) 
+        return false;
+    if (resp.result == 0) 
+        return false;  // Redis_No_Data
 
     outSeqNum = resp.seqNum;
     mLoginCnt.fetch_add(1, std::memory_order_relaxed);
@@ -163,13 +167,16 @@ bool ChatDummyClient::authFlow(SOCKET sock, __int32 &seqNum, __int8 &outX, __int
     pkt.seqNum     = seqNum;
     wcscpy_s(pkt.nickname, 20, L"Bot");
 
-    if (!safeSend(sock, (char *)&pkt, sizeof(pkt))) return false;
+    if (!safeSend(sock, (char *)&pkt, sizeof(pkt))) 
+        return false;
     seqNum++;
 
     PktSC_Auth resp{};
-    if (!safeRecv(sock, (char *)&resp, sizeof(resp))) return false;
+    if (!safeRecv(sock, (char *)&resp, sizeof(resp))) 
+        return false;
 
-    if (resp.type != static_cast<__int16>(ePacketType::SC_AUTH)) return false;
+    if (resp.type != static_cast<__int16>(ePacketType::SC_AUTH)) 
+        return false;
 
     outX = resp.sectorX;
     outY = resp.sectorY;
