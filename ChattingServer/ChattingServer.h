@@ -39,6 +39,7 @@ struct Player
     bool bAuth;
     wchar_t Nickname[20];
     DWORD lastTime;
+    __int64 accountNo;
 };
 struct Sector
 {

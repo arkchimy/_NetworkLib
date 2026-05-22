@@ -181,9 +181,13 @@ void NetworkLib::registerAcceptEx()
 
     Session &session = mSessions[top];
     session.mSock = socket(AF_INET, SOCK_STREAM, 0);
+    seqAddrType seqID = _InterlockedIncrement64(&mSeqID);
 
-    InterlockedExchange64(&session.mSessionID.Value, top);
+    SeqAndIdx seqIdx;
+    seqIdx.Idx = top;
+    seqIdx.Seq = seqID;
 
+    InterlockedExchange64(&session.mSessionID.Value, seqIdx.Value);
     /*
         AcceptEx 매개변수
 
@@ -226,16 +230,9 @@ void NetworkLib::completeAcceptEx(Session &session)
                reinterpret_cast<char *>(&mListenSock), sizeof(mListenSock));
     CreateIoCompletionPort(reinterpret_cast<HANDLE>(session.mSock), mHcp, reinterpret_cast<ULONG_PTR>(&session), 0);
 
-
-    seqAddrType seqID = _InterlockedIncrement64(&mSeqID);
-
-    SeqAndIdx seqIdx;
-    seqIdx.Idx = session.mSessionID.Idx;
-    seqIdx.Seq = seqID;
-    
     InterlockedExchange8(&session.mLive, true);
-    InterlockedExchange64(&session.mSessionID.Value, seqIdx.Value);
     InterlockedExchange16(&session.mIOcnt, 1);
+    RT_ASSERT(session.mSendOv->mMsgCnt == 0);
     //std::cout << "COMPLETE_ACCEPT" << "IOCOUNT : " << 1 << "\n";
     //std::cout << "Accecpt : " << "session_sock : " << session.mSock << "ID:" << session.mSessionID.Value << "\n";
     SOCKADDR_IN addr;
@@ -244,8 +241,6 @@ void NetworkLib::completeAcceptEx(Session &session)
 
     onAccept(addr,session.mSessionID);
     registerRecv(session);
-
-
 }
 
 void NetworkLib::registerRecv(Session &session)
@@ -349,16 +344,19 @@ void NetworkLib::registerSend(Session &session)
 
     if (msgCnt == 0)
     {
-        InterlockedExchange8(&session.mSendFlag, false);
-        msgCnt = static_cast<__int16>(CONFIG_SEND_MESSAGE_MAXCOUNT < session.mSenqQSize ? CONFIG_SEND_MESSAGE_MAXCOUNT : session.mSenqQSize);
-        if (msgCnt != 0)
+        if (_InterlockedCompareExchange8(&session.mSendFlag, false,true) == true)
         {
-            if (_InterlockedCompareExchange8(&session.mSendFlag, true, false) == false)
+            msgCnt = static_cast<__int16>(CONFIG_SEND_MESSAGE_MAXCOUNT < session.mSenqQSize ?
+                CONFIG_SEND_MESSAGE_MAXCOUNT : session.mSenqQSize);
+            if (msgCnt != 0)
             {
-                ZeroMemory(&sendOv, sizeof(OVERLAPPED));
-                short ioCount = InterlockedIncrement16(&session.mIOcnt);
-                //std::cout << "UseZero PQCS" << "IOCOUNT : " << ioCount << "\n";
-                PostQueuedCompletionStatus(mHcp, 0, (ULONG_PTR)&session, session.mSendOv);
+                if (_InterlockedCompareExchange8(&session.mSendFlag, true, false) == false)
+                {
+                    ZeroMemory(&sendOv, sizeof(OVERLAPPED));
+                    short ioCount = InterlockedIncrement16(&session.mIOcnt);
+                    // std::cout << "UseZero PQCS" << "IOCOUNT : " << ioCount << "\n";
+                    PostQueuedCompletionStatus(mHcp, 0, (ULONG_PTR)&session, session.mSendOv);
+                }
             }
         }
         return;
@@ -371,6 +369,8 @@ void NetworkLib::registerSend(Session &session)
     {
         utility::Message *msg = session.DeQueueMsgOrNull();
         RT_ASSERT(msg != nullptr);
+        RT_ASSERT(msg->GetOwnerID() == session.mSessionID.Value);
+
         sendOv.mSendMsgs[cnt] = msg;
 
         wsabuf[cnt].buf = msg->GetFrontPtr();
@@ -516,6 +516,15 @@ void NetworkLib::sendPost(const SeqAndIdx& sessionID, utility::Message &msg)
     }
 
     sessionUnLock(sessionID);
+}
+
+short NetworkLib::sendQSize(const SeqAndIdx &sessionID)
+{
+    Session &session = mSessions[sessionID.Idx];
+    utility::Message* msg = mSessions->DeQueueMsgOrNull();
+    if (msg == nullptr)
+        return 0;
+    return 1;
 }
 
 void NetworkLib::disconnectSession(const SeqAndIdx& sessionID)

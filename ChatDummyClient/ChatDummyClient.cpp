@@ -250,6 +250,7 @@ void ChatDummyClient::clientThread()
 
     while (true)
     {
+        ++accountNo;
         SOCKET sock = connectToServer();
         if (sock == INVALID_SOCKET) { Sleep(100); continue; }
 

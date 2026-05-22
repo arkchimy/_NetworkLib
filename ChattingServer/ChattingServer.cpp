@@ -23,7 +23,7 @@ void ChattingServer::onAccept(const SOCKADDR_IN &addr, const SeqAndIdx &sessionI
 {
     Player &player = *MY_NEW Player();
     player.Addr = addr;
-    player.SessionID = sessionID;
+    InterlockedExchange64(&player.SessionID.Value, sessionID.Value);
     {
         std::lock_guard<std::shared_mutex> lock(mPlayerMapLock);
         auto iter = mPlayerMap.find(sessionID.Value);
@@ -57,7 +57,9 @@ void ChattingServer::onRelease(const SeqAndIdx &sessionID)
 
     // Why : Contents에서 Player에대한 접근이 이루어짐. 이떄 여기서 할당해제하면 댕글링
     Message *msg = MY_NEW(Message);
+    msg->InitMessage(sessionID.Value, '\xFF');
     *msg << reinterpret_cast<__int64>(player);
+
     pushDeferredQ(*msg);
 }
 bool ChattingServer::popContentsQ(Message **msg)
@@ -216,7 +218,6 @@ void ChattingServer::moveSector(__int64 sessionID, const __int8 beforeX, const _
         player.sectorX = x;
         player.sectorY = y;
     }
-    
 }
 
 void ChattingServer::aroundLockAndSendMsg(__int16 x, __int16 y, wchar_t Nickname[20], __int16 MessageLen, wchar_t *const buffer)
@@ -247,8 +248,13 @@ void ChattingServer::aroundLockAndSendMsg(__int16 x, __int16 y, wchar_t Nickname
         {
             Player &player = *hash.second;
             Message *msg = MY_NEW Message();
+            msg->InitMessage(player.SessionID.Value, '\xFF');
             makeChatMessage(player.SessionFK, player.SessionID.Value, Nickname, MessageLen, buffer, *msg);
+            //std::cout << std::setw(10) << "SendMsg" << std::setw(8) << player.SessionID.Value
+            //          << std::setw(10) << "AccounNo :" << std::setw(8) << player.accountNo << "\n";
+            RT_ASSERT(player.bAuth == true);
             sendPost(player.SessionID, *msg);
+      
         }
     }
 }
@@ -343,8 +349,12 @@ void ChattingServer::loginProc(Message &msg, Player &player)
 
     player.SessionFK = FK;
     player.SeqNumber = seqNumber;
+    player.accountNo = accountNo;
 
     makeLoginMessage(FK, bRetval, seqNumber, player.SessionID.Value, msg);
+    RT_ASSERT(sendQSize(player.SessionID) == 0);
+    //std::cout <<std::right << std::setw(10) << "loginProc" << std::setw(8) << player.SessionID.Value
+    //          << std::setw(10) << "AccounNo :" << std::setw(8) << accountNo << "\n";
     sendPost(player.SessionID, msg);
 }
 void ChattingServer::authProc(Message &msg, Player &player)
@@ -352,12 +362,14 @@ void ChattingServer::authProc(Message &msg, Player &player)
     //{
     //	wchar_t	Nickname[20]		// null 포함
     //} 이때 부터 SessionKey로 암호화를 통한 세션 인증과
+    RT_ASSERT(player.bAuth == false);
     if (player.bAuth == true)
     {
         disconnectSession(player.SessionID);
         MY_DELETE & msg;
         return;
     }
+
     wchar_t Nickname[20]{0};
     // 2번째 매개변수가 Byte 단위임
     msg.GetData(Nickname, 40);
@@ -379,6 +391,8 @@ void ChattingServer::authProc(Message &msg, Player &player)
         sector.mPlayers.insert({player.SessionID.Value, &player});
     }
     makeAuthMessage(player.SessionFK, player.SessionID.Value, SectorX, SectorY, msg);
+    //std::cout << std::setw(10) << "authProc" << std::setw(8) << player.SessionID.Value
+    //          << std::setw(10) << "AccounNo :" << std::setw(8) << player.accountNo << "\n";
     sendPost(player.SessionID, msg);
 }
 
@@ -450,7 +464,7 @@ void ChattingServer::chatMessageProc(Message &msg, Player &player)
     RT_ASSERT(useSize == 0);
     MY_DELETE & msg;
 
-    aroundLockAndSendMsg(player.sectorX, player.sectorY, player.Nickname, MessageLen,Message);
+    aroundLockAndSendMsg(player.sectorX, player.sectorY, player.Nickname, MessageLen, Message);
 }
 
 void ChattingServer::contentsThread()
@@ -496,6 +510,10 @@ void ChattingServer::contentsThread()
                 RT_ASSERT(iter != mPlayerMap.end());
                 RT_ASSERT(player == iter->second);
                 mPlayerMap.erase(iter);
+            }
+            {
+                std::lock_guard<std::shared_mutex> lock(sectors[player->sectorX][player->sectorY].mMutex);
+                sectors[player->sectorX][player->sectorY].mPlayers.erase(player->SessionID.Value);
             }
             MY_DELETE player;
             MY_DELETE msg;
