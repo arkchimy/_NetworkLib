@@ -1,0 +1,162 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="소스 파일">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="헤더 파일">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="리소스 파일">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="utility">
+      <UniqueIdentifier>{e50f85e0-e494-42d2-b794-4830d40c9134}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="RPC">
+      <UniqueIdentifier>{b22d8e02-69e3-4e9d-b6b3-95edf89669fc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="utility\CLockFreeStack">
+      <UniqueIdentifier>{9c25383a-3c8f-4a85-934b-7c29819d2834}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="utility\CSystemLog">
+      <UniqueIdentifier>{0f461892-e227-4bab-80da-fff68cf44aea}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="utility\MT_CRingBuffer">
+      <UniqueIdentifier>{3f74b095-7382-4d78-a72b-b9012c5dd140}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="utility\Parser">
+      <UniqueIdentifier>{62301061-97d3-4811-b9fe-9fa09acd6f18}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="utility\Profiler_MultiThread">
+      <UniqueIdentifier>{427dece6-1013-45b5-9487-1fc81bf22fcb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="utility\SerializeBuffer_exception">
+      <UniqueIdentifier>{5d6866d7-b605-4fac-bc66-0bda09fd85b4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="utility\CLockFreeQueue">
+      <UniqueIdentifier>{eeb3c002-0937-4c5a-b6b5-4d316a1c8c19}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="utility\CCpuUsage">
+      <UniqueIdentifier>{c4366cbb-1f9e-4653-87db-b8f9ca91f69c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="utility\DeadLockGuard">
+      <UniqueIdentifier>{2eb06613-0e68-476e-b222-ec09f37dbdb6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="WinAPI">
+      <UniqueIdentifier>{7ba138fe-a315-4610-8bf2-53e185c9c540}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="utility\CLeakDetectPool">
+      <UniqueIdentifier>{c429d4b9-aacd-437d-acbb-34369a3874d7}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="CNetworkLib.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="utility\clsSession.h">
+      <Filter>utility</Filter>
+    </ClInclude>
+    <ClInclude Include="utility\stHeader.h">
+      <Filter>utility</Filter>
+    </ClInclude>
+    <ClInclude Include="RPC\CommonProtocol.h">
+      <Filter>RPC</Filter>
+    </ClInclude>
+    <ClInclude Include="RPC\Proxy.h">
+      <Filter>RPC</Filter>
+    </ClInclude>
+    <ClInclude Include="RPC\Stub.h">
+      <Filter>RPC</Filter>
+    </ClInclude>
+    <ClInclude Include="utility\CLockFreeStack\CLockFreeStack.h">
+      <Filter>utility\CLockFreeStack</Filter>
+    </ClInclude>
+    <ClInclude Include="utility\CSystemLog\CSystemLog.h">
+      <Filter>utility\CSystemLog</Filter>
+    </ClInclude>
+    <ClInclude Include="utility\MT_CRingBuffer\MT_CRingBuffer.h">
+      <Filter>utility\MT_CRingBuffer</Filter>
+    </ClInclude>
+    <ClInclude Include="utility\Parser\Parser.h">
+      <Filter>utility\Parser</Filter>
+    </ClInclude>
+    <ClInclude Include="utility\SerializeBuffer_exception\SerializeBuffer_exception.h">
+      <Filter>utility\SerializeBuffer_exception</Filter>
+    </ClInclude>
+    <ClInclude Include="utility\Profiler_MultiThread\Profiler_MultiThread.h">
+      <Filter>utility\Profiler_MultiThread</Filter>
+    </ClInclude>
+    <ClInclude Include="utility\CLockFreeQueue\CLockFreeQueue.h">
+      <Filter>utility\CLockFreeQueue</Filter>
+    </ClInclude>
+    <ClInclude Include="utility\CCpuUsage\CCpuUsage.h">
+      <Filter>utility\CCpuUsage</Filter>
+    </ClInclude>
+    <ClInclude Include="utility\DeadLockGuard\DeadLockGuard_lib.h">
+      <Filter>utility\DeadLockGuard</Filter>
+    </ClInclude>
+    <ClInclude Include="WinAPI\Atomic.h">
+      <Filter>WinAPI</Filter>
+    </ClInclude>
+    <ClInclude Include="WinAPI\WinThread.h">
+      <Filter>WinAPI</Filter>
+    </ClInclude>
+    <ClInclude Include="utility\CLeakDetectPool\CLeakDetectPool.h">
+      <Filter>utility\CLeakDetectPool</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="CNetworkLib.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="utility\clsSession.cpp">
+      <Filter>utility</Filter>
+    </ClCompile>
+    <ClCompile Include="RPC\Proxy.cpp">
+      <Filter>RPC</Filter>
+    </ClCompile>
+    <ClCompile Include="RPC\Stub.cpp">
+      <Filter>RPC</Filter>
+    </ClCompile>
+    <ClCompile Include="utility\CLockFreeStack\CLockFreeStack.cpp">
+      <Filter>utility\CLockFreeStack</Filter>
+    </ClCompile>
+    <ClCompile Include="utility\CSystemLog\CSystemLog.cpp">
+      <Filter>utility\CSystemLog</Filter>
+    </ClCompile>
+    <ClCompile Include="utility\MT_CRingBuffer\MT_CRingBuffer.cpp">
+      <Filter>utility\MT_CRingBuffer</Filter>
+    </ClCompile>
+    <ClCompile Include="utility\Parser\Parser.cpp">
+      <Filter>utility\Parser</Filter>
+    </ClCompile>
+    <ClCompile Include="utility\SerializeBuffer_exception\SerializeBuffer_exception.cpp">
+      <Filter>utility\SerializeBuffer_exception</Filter>
+    </ClCompile>
+    <ClCompile Include="utility\Profiler_MultiThread\Profiler_MultiThread.cpp">
+      <Filter>utility\Profiler_MultiThread</Filter>
+    </ClCompile>
+    <ClCompile Include="utility\CLockFreeQueue\CLockFreeQueue.cpp">
+      <Filter>utility\CLockFreeQueue</Filter>
+    </ClCompile>
+    <ClCompile Include="utility\CCpuUsage\CCpuUsage.cpp">
+      <Filter>utility\CCpuUsage</Filter>
+    </ClCompile>
+    <ClCompile Include="utility\DeadLockGuard\DeadLockGuard_lib.cpp">
+      <Filter>utility\DeadLockGuard</Filter>
+    </ClCompile>
+    <ClCompile Include="WinAPI\Atomic.cpp">
+      <Filter>WinAPI</Filter>
+    </ClCompile>
+    <ClCompile Include="WinAPI\WinThread.cpp">
+      <Filter>WinAPI</Filter>
+    </ClCompile>
+    <ClCompile Include="utility\CLeakDetectPool\CLeakDetectPool.cpp">
+      <Filter>utility\CLeakDetectPool</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>
