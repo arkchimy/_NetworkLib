@@ -8,7 +8,7 @@
 
 MyWsaData gWsa;
 
-// ---- 패킷 구조체 (EnCoding/DeCoding 스텁이므로 암호화 불필요) ----
+// ---- ChattingServer 패킷 ----
 #pragma pack(push, 1)
 struct PktHeader
 {
@@ -22,7 +22,7 @@ struct PktCS_Login
     __int16   type;
     __int32   seqNum;
     __int64   accountNo;
-};  // 17 bytes (hdr.Len = 14)
+};
 
 struct PktCS_Auth
 {
@@ -30,7 +30,8 @@ struct PktCS_Auth
     __int16   type;
     __int32   seqNum;
     wchar_t   nickname[20];
-};  // 49 bytes (hdr.Len = 46)
+    char      tokenKey[20];
+};
 
 struct PktCS_Move
 {
@@ -39,7 +40,7 @@ struct PktCS_Move
     __int32   seqNum;
     __int8    sectorX;
     __int8    sectorY;
-};  // 11 bytes (hdr.Len = 8)
+};
 
 struct PktCS_Chat
 {
@@ -47,8 +48,8 @@ struct PktCS_Chat
     __int16   type;
     __int32   seqNum;
     __int16   msgLen;
-    wchar_t   msg[2];  // L"Hi"
-};  // 15 bytes (hdr.Len = 12)
+    wchar_t   msg[2];
+};
 
 struct PktSC_Login
 {
@@ -56,7 +57,7 @@ struct PktSC_Login
     __int16   type;
     __int8    result;
     __int32   seqNum;
-};  // 10 bytes
+};
 
 struct PktSC_Auth
 {
@@ -64,10 +65,44 @@ struct PktSC_Auth
     __int16   type;
     __int8    sectorX;
     __int8    sectorY;
-};  // 7 bytes
+};
+
+// ---- LoginServer 패킷 ----
+struct LsHeader
+{
+    BYTE   byCode;
+    USHORT sDataLen;
+    BYTE   byRandKey;
+    BYTE   byCheckSum;
+};
+
+struct PktLS_ReqAuth
+{
+    LsHeader hdr;
+    WORD  type;
+    WCHAR id[20];
+    WCHAR pw[20];
+};
+
+struct PktLS_ResAuth
+{
+    LsHeader hdr;
+    WORD   type;
+    BYTE   status;
+    char   tokenKey[20];
+    BYTE   status2;     // Proxy.cpp의 Status 중복 기재
+    BYTE   encKey;
+    WCHAR  gameServerIP[16];
+    USHORT gameServerPort;
+    WCHAR  chatServerIP[16];
+    USHORT chatServerPort;
+};
 #pragma pack(pop)
 
-static constexpr int MAIN_LOOP_CNT = 100;
+static constexpr int  MAIN_LOOP_CNT = 100;
+static constexpr WORD LS_REQ_AUTH   = 101;
+static constexpr WORD LS_RES_AUTH   = 102;
+static constexpr BYTE LS_RESULT_OK  = 1;
 
 static bool safeRecv(SOCKET sock, char *buf, int size)
 {
@@ -93,15 +128,40 @@ static bool safeSend(SOCKET sock, const char *buf, int size)
     return true;
 }
 
-ChatDummyClient::ChatDummyClient(int userCnt)
-    : mServerIP(nullptr), mServerPort(0), mUserCnt(userCnt)
+static bool safeSSLRecv(SSL *ssl, char *buf, int size)
 {
+    int total = 0;
+    while (total < size)
+    {
+        int n = SSL_read(ssl, buf + total, size - total);
+        if (n <= 0) return false;
+        total += n;
+    }
+    return true;
 }
 
-void ChatDummyClient::Start(const char *ip, __int16 port)
+ChatDummyClient::ChatDummyClient(int userCnt)
+    : mLoginServerIP(nullptr), mLoginServerPort(0), mUserCnt(userCnt), mSslCtx(nullptr)
 {
-    mServerIP   = ip;
-    mServerPort = port;
+    SSL_library_init();
+    SSL_load_error_strings();
+    OpenSSL_add_all_algorithms();
+
+    mSslCtx = SSL_CTX_new(TLS_client_method());
+    // 테스트용이므로 서버 인증서 검증 생략
+    SSL_CTX_set_verify(mSslCtx, SSL_VERIFY_NONE, nullptr);
+}
+
+ChatDummyClient::~ChatDummyClient()
+{
+    if (mSslCtx)
+        SSL_CTX_free(mSslCtx);
+}
+
+void ChatDummyClient::Start(const char *loginIP, __int16 loginPort)
+{
+    mLoginServerIP   = loginIP;
+    mLoginServerPort = loginPort;
 
     mMonitorThread = std::thread(&ChatDummyClient::monitorThread, this);
     mInputThread   = std::thread(&ChatDummyClient::inputThread, this);
@@ -114,15 +174,15 @@ void ChatDummyClient::Start(const char *ip, __int16 port)
     mInputThread.join();
 }
 
-SOCKET ChatDummyClient::connectToServer()
+SOCKET ChatDummyClient::connectToServer(const char *ip, __int16 port)
 {
     SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == INVALID_SOCKET) return INVALID_SOCKET;
 
     SOCKADDR_IN addr{0};
     addr.sin_family = AF_INET;
-    addr.sin_port   = htons(mServerPort);
-    inet_pton(AF_INET, mServerIP, &addr.sin_addr);
+    addr.sin_port   = htons(port);
+    inet_pton(AF_INET, ip, &addr.sin_addr);
 
     if (connect(sock, (const sockaddr *)&addr, sizeof(addr)) != 0)
     {
@@ -132,64 +192,137 @@ SOCKET ChatDummyClient::connectToServer()
     return sock;
 }
 
-// CS_LOGIN → SC_LOGIN. 성공 시 outSeqNum = 서버가 내려준 새 SeqNumber
+// LoginServer에 SSL로 로그인 → tokenKey/encKey/ChatServer 주소 획득
+// accountNo는 Proxy.cpp 버그로 응답에 없음 → botIdx를 accountNo로 사용
+// (MySQL 계정 bot1, bot2, ... 를 순서대로 생성해두면 accountNo가 일치)
+bool ChatDummyClient::loginServerFlow(__int64 botIdx, LoginInfo &outInfo)
+{
+    SOCKET sock = connectToServer(mLoginServerIP, mLoginServerPort);
+    if (sock == INVALID_SOCKET) return false;
+
+    SSL *ssl = SSL_new(mSslCtx);
+    if (!ssl) { closesocket(sock); return false; }
+
+    SSL_set_fd(ssl, static_cast<int>(sock));
+    if (SSL_connect(ssl) != 1)
+    {
+        SSL_free(ssl);
+        closesocket(sock);
+        return false;
+    }
+
+    // CS_LOGIN_REQ_AUTH 전송
+    PktLS_ReqAuth req{};
+    req.hdr.byCode   = 0x77;
+    req.hdr.sDataLen = static_cast<USHORT>(sizeof(PktLS_ReqAuth) - sizeof(LsHeader));
+    req.type         = LS_REQ_AUTH;
+    swprintf_s(req.id, 20, L"bot%lld", botIdx);
+    wcscpy_s(req.pw, 20, L"1234");
+
+    bool ok = (SSL_write(ssl, reinterpret_cast<char *>(&req), sizeof(req)) > 0);
+
+    if (ok)
+    {
+        // 헤더 수신
+        LsHeader resHdr{};
+        ok = safeSSLRecv(ssl, reinterpret_cast<char *>(&resHdr), sizeof(LsHeader));
+
+        if (ok && resHdr.sDataLen <= sizeof(PktLS_ResAuth) - sizeof(LsHeader))
+        {
+            // 페이로드 수신 후 파싱
+            char payload[sizeof(PktLS_ResAuth) - sizeof(LsHeader)]{};
+            ok = safeSSLRecv(ssl, payload, resHdr.sDataLen);
+            if (ok)
+            {
+                int    off = 0;
+                WORD   resType;
+                BYTE   status;
+                memcpy(&resType, payload + off, sizeof(WORD)); off += sizeof(WORD);
+                memcpy(&status,  payload + off, sizeof(BYTE)); off += sizeof(BYTE);
+
+                if (resType == LS_RES_AUTH && status == LS_RESULT_OK)
+                {
+                    memcpy(outInfo.tokenKey, payload + off, 20); off += 20;
+                    off += sizeof(BYTE);  // status2 (중복)
+                    memcpy(&outInfo.encKey, payload + off, sizeof(BYTE)); off += sizeof(BYTE);
+
+                    WCHAR  gameIP[16]{};
+                    USHORT gamePort;
+                    memcpy(gameIP,   payload + off, 32);              off += 32;
+                    memcpy(&gamePort, payload + off, sizeof(USHORT)); off += sizeof(USHORT);
+
+                    WCHAR  chatIP[16]{};
+                    USHORT chatPort;
+                    memcpy(chatIP,   payload + off, 32);              off += 32;
+                    memcpy(&chatPort, payload + off, sizeof(USHORT)); off += sizeof(USHORT);
+
+                    size_t conv;
+                    wcstombs_s(&conv, outInfo.chatServerIP, 16, chatIP, _TRUNCATE);
+                    outInfo.chatServerPort = static_cast<__int16>(chatPort);
+                }
+                else
+                    ok = false;
+            }
+        }
+        else
+            ok = false;
+    }
+
+    SSL_free(ssl);
+    closesocket(sock);
+    return ok;
+}
+
 bool ChatDummyClient::loginFlow(SOCKET sock, __int64 accountNo, __int32 &outSeqNum)
 {
     PktCS_Login pkt{};
-    pkt.hdr.Len    = static_cast<__int16>(sizeof(PktCS_Login) - sizeof(PktHeader));  // 14
+    pkt.hdr.Len     = static_cast<__int16>(sizeof(PktCS_Login) - sizeof(PktHeader));
     pkt.hdr.RandKey = '\xFF';
-    pkt.type       = static_cast<__int16>(ePacketType::CS_LOGIN);
-    pkt.seqNum     = (__int32)0xfdfdfdfd;
-    pkt.accountNo  = accountNo;
+    pkt.type        = static_cast<__int16>(ePacketType::CS_LOGIN);
+    pkt.seqNum      = (__int32)0xfdfdfdfd;
+    pkt.accountNo   = accountNo;
 
-    if (!safeSend(sock, (char *)&pkt, sizeof(pkt))) 
-        return false;
+    if (!safeSend(sock, (char *)&pkt, sizeof(pkt))) return false;
 
     PktSC_Login resp{};
-    if (!safeRecv(sock, (char *)&resp, sizeof(resp))) 
-        return false;
-
-    if (resp.type != static_cast<__int16>(ePacketType::SC_LOGIN)) 
-        return false;
-    if (resp.result == 0) 
-        return false;  // Redis_No_Data
+    if (!safeRecv(sock, (char *)&resp, sizeof(resp))) return false;
+    if (resp.type != static_cast<__int16>(ePacketType::SC_LOGIN)) return false;
+    if (resp.result == 0) return false;
 
     outSeqNum = resp.seqNum;
     mLoginCnt.fetch_add(1, std::memory_order_relaxed);
     return true;
 }
 
-// CS_AUTH → SC_AUTH. 반환 시 seqNum은 다음 패킷에 쓸 값으로 1 증가됨
-bool ChatDummyClient::authFlow(SOCKET sock, __int32 &seqNum, __int8 &outX, __int8 &outY, const wchar_t *nickname)
+bool ChatDummyClient::authFlow(SOCKET sock, __int32 &seqNum, __int8 &outX, __int8 &outY,
+                               const wchar_t *nickname, const char *tokenKey)
 {
     PktCS_Auth pkt{};
-    pkt.hdr.Len    = static_cast<__int16>(sizeof(PktCS_Auth) - sizeof(PktHeader));  // 46
+    pkt.hdr.Len     = static_cast<__int16>(sizeof(PktCS_Auth) - sizeof(PktHeader));
     pkt.hdr.RandKey = '\xFF';
-    pkt.type       = static_cast<__int16>(ePacketType::CS_AUTH);
-    pkt.seqNum     = seqNum;
+    pkt.type        = static_cast<__int16>(ePacketType::CS_AUTH);
+    pkt.seqNum      = seqNum;
     wcscpy_s(pkt.nickname, 20, nickname);
+    memcpy(pkt.tokenKey, tokenKey, 20);
 
-    if (!safeSend(sock, (char *)&pkt, sizeof(pkt))) 
-        return false;
+    if (!safeSend(sock, (char *)&pkt, sizeof(pkt))) return false;
     seqNum++;
 
     PktSC_Auth resp{};
-    if (!safeRecv(sock, (char *)&resp, sizeof(resp))) 
-        return false;
-
-    if (resp.type != static_cast<__int16>(ePacketType::SC_AUTH)) 
-        return false;
+    if (!safeRecv(sock, (char *)&resp, sizeof(resp))) return false;
+    if (resp.type != static_cast<__int16>(ePacketType::SC_AUTH)) return false;
 
     outX = resp.sectorX;
     outY = resp.sectorY;
     return true;
 }
 
-bool ChatDummyClient::mainLoop(SOCKET sock, __int32 &seqNum, __int8 &sectorX, __int8 &sectorY, int &pendingChat, const wchar_t *myNickname)
+bool ChatDummyClient::mainLoop(SOCKET sock, __int32 &seqNum, __int8 &sectorX, __int8 &sectorY,
+                               int &pendingChat, const wchar_t *myNickname)
 {
     for (int i = 0; i < MAIN_LOOP_CNT; ++i)
     {
-        // CS_MOVE: 현재와 다른 임의 섹터로 이동
+        // CS_MOVE
         {
             __int8 newX, newY;
             do
@@ -199,12 +332,12 @@ bool ChatDummyClient::mainLoop(SOCKET sock, __int32 &seqNum, __int8 &sectorX, __
             } while (newX == sectorX && newY == sectorY);
 
             PktCS_Move pkt{};
-            pkt.hdr.Len    = static_cast<__int16>(sizeof(PktCS_Move) - sizeof(PktHeader));  // 8
+            pkt.hdr.Len     = static_cast<__int16>(sizeof(PktCS_Move) - sizeof(PktHeader));
             pkt.hdr.RandKey = '\xFF';
-            pkt.type       = static_cast<__int16>(ePacketType::CS_MOVE);
-            pkt.seqNum     = seqNum;
-            pkt.sectorX    = newX;
-            pkt.sectorY    = newY;
+            pkt.type        = static_cast<__int16>(ePacketType::CS_MOVE);
+            pkt.seqNum      = seqNum;
+            pkt.sectorX     = newX;
+            pkt.sectorY     = newY;
 
             if (!safeSend(sock, (char *)&pkt, sizeof(pkt))) return false;
             seqNum++;
@@ -216,13 +349,13 @@ bool ChatDummyClient::mainLoop(SOCKET sock, __int32 &seqNum, __int8 &sectorX, __
         // CS_CHAT
         {
             PktCS_Chat pkt{};
-            pkt.hdr.Len    = static_cast<__int16>(sizeof(PktCS_Chat) - sizeof(PktHeader));  // 12
+            pkt.hdr.Len     = static_cast<__int16>(sizeof(PktCS_Chat) - sizeof(PktHeader));
             pkt.hdr.RandKey = '\xFF';
-            pkt.type       = static_cast<__int16>(ePacketType::CS_CHAT);
-            pkt.seqNum     = seqNum;
-            pkt.msgLen     = 2;
-            pkt.msg[0]     = L'H';
-            pkt.msg[1]     = L'i';
+            pkt.type        = static_cast<__int16>(ePacketType::CS_CHAT);
+            pkt.seqNum      = seqNum;
+            pkt.msgLen      = 2;
+            pkt.msg[0]      = L'H';
+            pkt.msg[1]      = L'i';
 
             if (!safeSend(sock, (char *)&pkt, sizeof(pkt))) return false;
             seqNum++;
@@ -237,13 +370,12 @@ bool ChatDummyClient::mainLoop(SOCKET sock, __int32 &seqNum, __int8 &sectorX, __
 
 int ChatDummyClient::drainRecv(SOCKET sock, const wchar_t *myNickname)
 {
-    int received = 0;
-    u_long avail = 0;
+    int    received = 0;
+    u_long avail    = 0;
     while (ioctlsocket(sock, FIONREAD, &avail) == 0 && avail >= sizeof(PktHeader))
     {
         PktHeader hdr;
         if (!safeRecv(sock, (char *)&hdr, sizeof(hdr))) break;
-
         if (hdr.Len <= 0 || hdr.Len > 2048) break;
 
         char payload[2048];
@@ -253,10 +385,8 @@ int ChatDummyClient::drainRecv(SOCKET sock, const wchar_t *myNickname)
         memcpy(&type, payload, sizeof(type));
         if (static_cast<ePacketType>(type) == ePacketType::SC_CHAT)
         {
-            // SC_CHAT payload: type(2) + Nickname[20](40) + MessageLen(2) + Message(...)
             wchar_t rcvNick[20] = {};
             memcpy(rcvNick, payload + sizeof(__int16), sizeof(wchar_t) * 20);
-
             if (wcscmp(rcvNick, myNickname) == 0)
             {
                 mRecvChatCnt.fetch_add(1, std::memory_order_relaxed);
@@ -269,17 +399,27 @@ int ChatDummyClient::drainRecv(SOCKET sock, const wchar_t *myNickname)
 
 void ChatDummyClient::clientThread()
 {
-    __int64 accountNo = mNextAccountNo.fetch_add(1, std::memory_order_relaxed);
+    __int64 botIdx = mNextBotIdx.fetch_add(1, std::memory_order_relaxed);
 
     wchar_t myNickname[20] = {};
-    swprintf_s(myNickname, 20, L"Bot%lld", accountNo);
+    swprintf_s(myNickname, 20, L"Bot%lld", botIdx);
 
     while (true)
     {
         while (mPaused.load(std::memory_order_relaxed))
             Sleep(100);
 
-        SOCKET sock = connectToServer();
+        // LoginServer 인증
+        LoginInfo info{};
+        if (!loginServerFlow(botIdx, info))
+        {
+            mErrCnt.fetch_add(1, std::memory_order_relaxed);
+            Sleep(1000);
+            continue;
+        }
+
+        // ChatServer 연결
+        SOCKET sock = connectToServer(info.chatServerIP, info.chatServerPort);
         if (sock == INVALID_SOCKET) { Sleep(100); continue; }
 
         mConnectTotal.fetch_add(1, std::memory_order_relaxed);
@@ -287,8 +427,9 @@ void ChatDummyClient::clientThread()
         __int32 seqNum  = 0;
         __int8  sectorX = 0, sectorY = 0;
 
-        if (!loginFlow(sock, accountNo, seqNum) ||
-            !authFlow(sock, seqNum, sectorX, sectorY, myNickname))
+        // botIdx를 accountNo로 사용 (MySQL 계정 bot1, bot2, ... 순서 필요)
+        if (!loginFlow(sock, botIdx, seqNum) ||
+            !authFlow(sock, seqNum, sectorX, sectorY, myNickname, info.tokenKey))
         {
             mErrCnt.fetch_add(1, std::memory_order_relaxed);
             closesocket(sock);
@@ -303,10 +444,8 @@ void ChatDummyClient::clientThread()
         while (pendingChat > 0)
         {
             int got = drainRecv(sock, myNickname);
-            if (got > 0)
-                pendingChat -= got;
-            else
-                Sleep(1);
+            if (got > 0) pendingChat -= got;
+            else Sleep(1);
         }
 
         closesocket(sock);
