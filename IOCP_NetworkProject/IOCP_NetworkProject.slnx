@@ -1,7 +1,0 @@
-<Solution>
-  <Configurations>
-    <Platform Name="x64" />
-    <Platform Name="x86" />
-  </Configurations>
-  <Project Path="IOCP_NetworkProject.vcxproj" Id="0610ab53-64d9-4127-8576-49883b290faa" />
-</Solution>
