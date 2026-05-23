@@ -604,6 +604,7 @@ std::ostream &operator<<(std::ostream &out, const ChattingServer &server)
     __int64 tpsContent = currentContent - beforeContent;
 
     SetConsoleTextAttribute(hConsole, COLOR_WHITE);
+    printRow(out, hConsole, "WokerThread Cnt : ", CONFIG_WORKER_THREAD_CNT, COLOR_WHITE);
     out << "=== ChattingServer Monitor ===\n\n";
 
     SetConsoleTextAttribute(hConsole, COLOR_WHITE);
