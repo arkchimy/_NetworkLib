@@ -160,14 +160,14 @@ bool ChatDummyClient::loginFlow(SOCKET sock, __int64 accountNo, __int32 &outSeqN
 }
 
 // CS_AUTH → SC_AUTH. 반환 시 seqNum은 다음 패킷에 쓸 값으로 1 증가됨
-bool ChatDummyClient::authFlow(SOCKET sock, __int32 &seqNum, __int8 &outX, __int8 &outY)
+bool ChatDummyClient::authFlow(SOCKET sock, __int32 &seqNum, __int8 &outX, __int8 &outY, const wchar_t *nickname)
 {
     PktCS_Auth pkt{};
     pkt.hdr.Len    = static_cast<__int16>(sizeof(PktCS_Auth) - sizeof(PktHeader));  // 46
     pkt.hdr.RandKey = '\xFF';
     pkt.type       = static_cast<__int16>(ePacketType::CS_AUTH);
     pkt.seqNum     = seqNum;
-    wcscpy_s(pkt.nickname, 20, L"Bot");
+    wcscpy_s(pkt.nickname, 20, nickname);
 
     if (!safeSend(sock, (char *)&pkt, sizeof(pkt))) 
         return false;
@@ -185,7 +185,7 @@ bool ChatDummyClient::authFlow(SOCKET sock, __int32 &seqNum, __int8 &outX, __int
     return true;
 }
 
-bool ChatDummyClient::mainLoop(SOCKET sock, __int32 &seqNum, __int8 &sectorX, __int8 &sectorY, int &pendingChat)
+bool ChatDummyClient::mainLoop(SOCKET sock, __int32 &seqNum, __int8 &sectorX, __int8 &sectorY, int &pendingChat, const wchar_t *myNickname)
 {
     for (int i = 0; i < MAIN_LOOP_CNT; ++i)
     {
@@ -230,12 +230,12 @@ bool ChatDummyClient::mainLoop(SOCKET sock, __int32 &seqNum, __int8 &sectorX, __
             ++pendingChat;
         }
 
-        pendingChat -= drainRecv(sock);
+        pendingChat -= drainRecv(sock, myNickname);
     }
     return true;
 }
 
-int ChatDummyClient::drainRecv(SOCKET sock)
+int ChatDummyClient::drainRecv(SOCKET sock, const wchar_t *myNickname)
 {
     int received = 0;
     u_long avail = 0;
@@ -253,8 +253,15 @@ int ChatDummyClient::drainRecv(SOCKET sock)
         memcpy(&type, payload, sizeof(type));
         if (static_cast<ePacketType>(type) == ePacketType::SC_CHAT)
         {
-            mRecvChatCnt.fetch_add(1, std::memory_order_relaxed);
-            ++received;
+            // SC_CHAT payload: type(2) + Nickname[20](40) + MessageLen(2) + Message(...)
+            wchar_t rcvNick[20] = {};
+            memcpy(rcvNick, payload + sizeof(__int16), sizeof(wchar_t) * 20);
+
+            if (wcscmp(rcvNick, myNickname) == 0)
+            {
+                mRecvChatCnt.fetch_add(1, std::memory_order_relaxed);
+                ++received;
+            }
         }
     }
     return received;
@@ -263,6 +270,9 @@ int ChatDummyClient::drainRecv(SOCKET sock)
 void ChatDummyClient::clientThread()
 {
     __int64 accountNo = mNextAccountNo.fetch_add(1, std::memory_order_relaxed);
+
+    wchar_t myNickname[20] = {};
+    swprintf_s(myNickname, 20, L"Bot%lld", accountNo);
 
     while (true)
     {
@@ -278,7 +288,7 @@ void ChatDummyClient::clientThread()
         __int8  sectorX = 0, sectorY = 0;
 
         if (!loginFlow(sock, accountNo, seqNum) ||
-            !authFlow(sock, seqNum, sectorX, sectorY))
+            !authFlow(sock, seqNum, sectorX, sectorY, myNickname))
         {
             mErrCnt.fetch_add(1, std::memory_order_relaxed);
             closesocket(sock);
@@ -287,12 +297,12 @@ void ChatDummyClient::clientThread()
         }
 
         int pendingChat = 0;
-        if (!mainLoop(sock, seqNum, sectorX, sectorY, pendingChat))
+        if (!mainLoop(sock, seqNum, sectorX, sectorY, pendingChat, myNickname))
             mErrCnt.fetch_add(1, std::memory_order_relaxed);
 
         while (pendingChat > 0)
         {
-            int got = drainRecv(sock);
+            int got = drainRecv(sock, myNickname);
             if (got > 0)
                 pendingChat -= got;
             else

@@ -22,9 +22,9 @@ class ChatDummyClient
 
     SOCKET connectToServer();
     bool loginFlow(SOCKET sock, __int64 accountNo, __int32 &outSeqNum);
-    bool authFlow(SOCKET sock, __int32 &seqNum, __int8 &outX, __int8 &outY);
-    bool mainLoop(SOCKET sock, __int32 &seqNum, __int8 &sectorX, __int8 &sectorY, int &pendingChat);
-    int  drainRecv(SOCKET sock);
+    bool authFlow(SOCKET sock, __int32 &seqNum, __int8 &outX, __int8 &outY, const wchar_t *nickname);
+    bool mainLoop(SOCKET sock, __int32 &seqNum, __int8 &sectorX, __int8 &sectorY, int &pendingChat, const wchar_t *myNickname);
+    int  drainRecv(SOCKET sock, const wchar_t *myNickname);
 
   private:
     const char *mServerIP;
