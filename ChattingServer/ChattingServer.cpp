@@ -537,9 +537,16 @@ void ChattingServer::contentsThread()
 void ChattingServer::monitorThread()
 {
     timeBeginPeriod(1);
-    // TODO : Server 종료 신호를 받고 종료되는 코드 만들기.
-    constexpr int timeInterver = 1000;
 
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+
+    // 커서 숨기기 (깜빡임 방지)
+    CONSOLE_CURSOR_INFO cursorInfo;
+    GetConsoleCursorInfo(hConsole, &cursorInfo);
+    cursorInfo.bVisible = false;
+    SetConsoleCursorInfo(hConsole, &cursorInfo);
+
+    constexpr int timeInterver = 1000;
     DWORD currentTime = timeGetTime();
     DWORD nextTime = currentTime + timeInterver;
     while (1)
@@ -547,6 +554,8 @@ void ChattingServer::monitorThread()
         currentTime = timeGetTime();
         if (nextTime <= currentTime)
         {
+            COORD coord = {0, 0};
+            SetConsoleCursorPosition(hConsole, coord);
             std::cout << *this;
             nextTime += timeInterver;
         }
@@ -558,35 +567,69 @@ void ChattingServer::monitorThread()
     timeEndPeriod(1);
 }
 
+namespace
+{
+constexpr WORD COLOR_WHITE  = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY;
+constexpr WORD COLOR_GREEN  = FOREGROUND_GREEN | FOREGROUND_INTENSITY;
+constexpr WORD COLOR_YELLOW = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY;
+constexpr WORD COLOR_RED    = FOREGROUND_RED | FOREGROUND_INTENSITY;
+constexpr WORD COLOR_GRAY   = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
+
+void printRow(std::ostream &out, HANDLE hConsole, const char *label, __int64 value, WORD valueColor)
+{
+    SetConsoleTextAttribute(hConsole, COLOR_GRAY);
+    out << "  " << std::left << std::setw(14) << label << ": ";
+    SetConsoleTextAttribute(hConsole, valueColor);
+    out << std::right << std::setw(8) << value << "\n";
+}
+} // namespace
+
 std::ostream &operator<<(std::ostream &out, const ChattingServer &server)
 {
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+
     thread_local __int64 beforeAccept;
     thread_local __int64 beforeRecv;
     thread_local __int64 beforeSend;
     thread_local __int64 beforeContent;
 
-    __int64 currentAccept = server.GetAcceptCount();
-    __int64 currentRecv = server.GetRecvCount();
-    __int64 currentSend = server.GetSendCount();
+    __int64 currentAccept  = server.GetAcceptCount();
+    __int64 currentRecv    = server.GetRecvCount();
+    __int64 currentSend    = server.GetSendCount();
     __int64 currentContent = server.mContentsTPS;
-    
 
-    out << "===============================================================\n";
-    out << std::setw(10) << "Total AcceptCnt : " << std::setw(10) << currentAccept << "\n";
-    out << std::setw(10) << " AcceptCnt TPS : " << std::setw(10) << currentAccept - beforeAccept << "\n";
-    out << std::setw(10) << " RecvCnt TPS : " << std::setw(10) << currentRecv - beforeRecv << "\n";
-    out << std::setw(10) << " SendCnt TPS : " << std::setw(10) << currentSend - beforeSend << "\n";
-    out << std::setw(10) << " Contents TPS : " << std::setw(10) << currentContent - beforeContent << "\n";
-    out << "===============================================================\n";
-    out << std::setw(10) << " SessionCnt : " << std::setw(10) << server.GetSessionCount() << "\n";
-    out << std::setw(10) << " UserCnt : " << std::setw(10) << server.mUserCnt << "\n";
-    out << std::setw(10) << " mContentsQ : " << std::setw(10) << server.mContentsQSize << "\n";
-    out << std::setw(10) << " mDeferredReleaseQ : " << std::setw(10) << server.mDeferredReleaseQSize << "\n";
-    out << std::setw(10) << " Total DisConnect Cnt : " << std::setw(10) << server.GetDisConnectCount() << "\n";
-    out << "===============================================================\n";
-    beforeAccept = currentAccept;
-    beforeRecv = currentRecv;
-    beforeSend = currentSend;
+    __int64 tpsAccept  = currentAccept  - beforeAccept;
+    __int64 tpsRecv    = currentRecv    - beforeRecv;
+    __int64 tpsSend    = currentSend    - beforeSend;
+    __int64 tpsContent = currentContent - beforeContent;
+
+    SetConsoleTextAttribute(hConsole, COLOR_WHITE);
+    out << "=== ChattingServer Monitor ===\n\n";
+
+    SetConsoleTextAttribute(hConsole, COLOR_WHITE);
+    out << "[ TPS ]\n";
+    printRow(out, hConsole, "Accept",    tpsAccept,  COLOR_GREEN);
+    printRow(out, hConsole, "Recv",      tpsRecv,    COLOR_GREEN);
+    printRow(out, hConsole, "Send",      tpsSend,    COLOR_GREEN);
+    printRow(out, hConsole, "Contents",  tpsContent, COLOR_GREEN);
+    printRow(out, hConsole, "AccTotal",  currentAccept, COLOR_GRAY);
+
+    out << "\n";
+
+    SetConsoleTextAttribute(hConsole, COLOR_WHITE);
+    out << "[ State ]\n";
+    printRow(out, hConsole, "Sessions",   server.GetSessionCount(),       COLOR_WHITE);
+    printRow(out, hConsole, "Users",      server.mUserCnt,                COLOR_WHITE);
+    printRow(out, hConsole, "ContentsQ",  server.mContentsQSize,          server.mContentsQSize  > 0 ? COLOR_RED    : COLOR_GREEN);
+    printRow(out, hConsole, "DeferredQ",  server.mDeferredReleaseQSize,   server.mDeferredReleaseQSize > 0 ? COLOR_YELLOW : COLOR_GREEN);
+    printRow(out, hConsole, "Disconnect", server.GetDisConnectCount(),    COLOR_YELLOW);
+
+    SetConsoleTextAttribute(hConsole, COLOR_GRAY);
+    out << "\n";
+
+    beforeAccept  = currentAccept;
+    beforeRecv    = currentRecv;
+    beforeSend    = currentSend;
     beforeContent = currentContent;
 
     return out;
