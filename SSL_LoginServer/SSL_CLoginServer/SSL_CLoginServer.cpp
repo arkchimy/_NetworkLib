@@ -367,7 +367,7 @@ void SSL_CLoginServer::PacketProc_LoginAuth(ull SessionID, CMessage *msg)
     WCHAR PW[Password_LEN] = {0};
     int accountNo = 0;
     SOCKADDR_IN addr;
-    char tokenKey[20]{0}; // 랜덤으로 생성하는방법 추천해줘.
+    char tokenKey[20]{0}; 
     BYTE enCodeKey = 0;
     // 패킷에서 ID, PW 추출
     msg->GetData(ID, sizeof(WCHAR) * ID_LEN);

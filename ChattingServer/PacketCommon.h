@@ -32,6 +32,7 @@ enum class ePacketType : __int16
     // 
     //  __int32 SeqNumber
 	//	wchar_t	Nickname[20]		// null 포함
+    //  char_t TokenKey[20]         // LoginServer에서 받아온 것
     //} 이때 부터 SessionKey로 암호화를 통한 세션 인증과
 
     SC_AUTH = 3,

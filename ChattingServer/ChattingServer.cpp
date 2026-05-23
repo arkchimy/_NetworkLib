@@ -8,6 +8,8 @@
 
 #pragma comment(lib, "winmm.lib")
 
+thread_local cpp_redis::client *gRedisClient;
+
 namespace network
 {
 ChattingServer::ChattingServer()
@@ -180,10 +182,28 @@ void ChattingServer::packetProc(Message &msg, Player &player)
     }
 }
 
-eRedisResult ChattingServer::getFixedKeyFromRedis(__int64 accountNo, __int8 &FK)
+eRedisResult ChattingServer::getFixedKeyFromRedis(__int64 accountNo, Player &player) const
 {
     // TODO : Redis에서 accountNo 를 Key로 FK를 가져오고 반환값을 통해 상태를 전송.
-    FK = 0x00;
+    cpp_redis::reply result;
+    gRedisClient->hmget("session:" + std::to_string(accountNo), {"encKey", "tokenKey"},
+                        [&result](cpp_redis::reply &r)
+                        { result = r; });
+    gRedisClient->sync_commit();
+    if (!result.is_array())
+    {
+        return eRedisResult::Redis_No_Data;
+    }
+    auto &arr = result.as_array();
+    if (arr[0].is_null() || arr[1].is_null())
+    {
+        return eRedisResult::Redis_No_Data;
+    }
+    // Why : LoginServer의 실수
+    RT_ASSERT(arr[1].as_string().size() == CONFIG_TOKENKEY_LEN);
+
+    memcpy_s(player.tokenKey, CONFIG_TOKENKEY_LEN, arr[1].as_string().c_str(), CONFIG_TOKENKEY_LEN);
+    player.SessionFK = static_cast<__int8>(std::stoi(arr[0].as_string())); // encKey
     return eRedisResult::Redis_Success;
 }
 
@@ -258,11 +278,10 @@ void ChattingServer::aroundLockAndSendMsg(__int16 x, __int16 y, wchar_t Nickname
             Message *msg = MY_NEW Message();
             msg->InitMessage(player.SessionID.Value, '\xFF');
             makeChatMessage(player.SessionFK, player.SessionID.Value, Nickname, MessageLen, buffer, *msg);
-            //std::cout << std::setw(10) << "SendMsg" << std::setw(8) << player.SessionID.Value
-            //          << std::setw(10) << "AccounNo :" << std::setw(8) << player.accountNo << "\n";
+            // std::cout << std::setw(10) << "SendMsg" << std::setw(8) << player.SessionID.Value
+            //           << std::setw(10) << "AccounNo :" << std::setw(8) << player.accountNo << "\n";
             RT_ASSERT(player.bAuth == true);
             sendPost(player.SessionID, *msg);
-      
         }
     }
 }
@@ -351,24 +370,29 @@ void ChattingServer::loginProc(Message &msg, Player &player)
     RT_ASSERT(useSize == 0);
 
     // TODO : Redis에서 FK값을 가져와 회신하기.
-    __int8 FK;
-    eRedisResult bRetval = getFixedKeyFromRedis(accountNo, FK);
+    eRedisResult bRetval = getFixedKeyFromRedis(accountNo, player);
+    if (bRetval != eRedisResult::Redis_Success)
+    {
+        MY_DELETE & msg;
+        disconnectSession(player.SessionID);
+        return;
+    }
     __int32 seqNumber = rand() % INT_MAX;
 
-    player.SessionFK = FK;
     player.SeqNumber = seqNumber;
     player.accountNo = accountNo;
 
-    makeLoginMessage(FK, bRetval, seqNumber, player.SessionID.Value, msg);
+    makeLoginMessage(player.SessionFK, bRetval, seqNumber, player.SessionID.Value, msg);
     RT_ASSERT(sendQSize(player.SessionID) == 0);
-    //std::cout <<std::right << std::setw(10) << "loginProc" << std::setw(8) << player.SessionID.Value
-    //          << std::setw(10) << "AccounNo :" << std::setw(8) << accountNo << "\n";
+    // std::cout <<std::right << std::setw(10) << "loginProc" << std::setw(8) << player.SessionID.Value
+    //           << std::setw(10) << "AccounNo :" << std::setw(8) << accountNo << "\n";
     sendPost(player.SessionID, msg);
 }
 void ChattingServer::authProc(Message &msg, Player &player)
 {
     //{
     //	wchar_t	Nickname[20]		// null 포함
+    //  char TokenKey[20]           // LoginServer에서 받아온 것
     //} 이때 부터 SessionKey로 암호화를 통한 세션 인증과
     RT_ASSERT(player.bAuth == false);
     if (player.bAuth == true)
@@ -381,10 +405,21 @@ void ChattingServer::authProc(Message &msg, Player &player)
     wchar_t Nickname[20]{0};
     // 2번째 매개변수가 Byte 단위임
     msg.GetData(Nickname, 40);
+
+    char tokenKey[20]{0};
+    // 2번째 매개변수가 Byte 단위임
+    msg.GetData(tokenKey, 20);
+
     size_t useSize = msg.GetUseSize();
     RT_ASSERT(useSize == 0);
 
     memcpy_s(player.Nickname, sizeof(player.Nickname), Nickname, sizeof(Nickname));
+    if (memcmp(tokenKey, player.tokenKey, CONFIG_TOKENKEY_LEN) != 0)
+    {
+        MY_DELETE & msg;
+        disconnectSession(player.SessionID);
+        return;
+    }
 
     __int8 SectorX = rand() % 50;
     __int8 SectorY = rand() % 50;
@@ -399,8 +434,8 @@ void ChattingServer::authProc(Message &msg, Player &player)
         sector.mPlayers.insert({player.SessionID.Value, &player});
     }
     makeAuthMessage(player.SessionFK, player.SessionID.Value, SectorX, SectorY, msg);
-    //std::cout << std::setw(10) << "authProc" << std::setw(8) << player.SessionID.Value
-    //          << std::setw(10) << "AccounNo :" << std::setw(8) << player.accountNo << "\n";
+    // std::cout << std::setw(10) << "authProc" << std::setw(8) << player.SessionID.Value
+    //           << std::setw(10) << "AccounNo :" << std::setw(8) << player.accountNo << "\n";
     sendPost(player.SessionID, msg);
 }
 
@@ -477,6 +512,10 @@ void ChattingServer::chatMessageProc(Message &msg, Player &player)
 
 void ChattingServer::contentsThread()
 {
+    cpp_redis::client client;
+    gRedisClient = &client;
+
+    gRedisClient->connect();
     DWORD retval;
     while (1)
     {
@@ -511,7 +550,7 @@ void ChattingServer::contentsThread()
             MY_DELETE player;
             MY_DELETE msg;
         }
-        
+
         msg = nullptr;
         while (1)
         {
@@ -530,7 +569,6 @@ void ChattingServer::contentsThread()
             packetProc(*msg, *player);
             ++mContentsTPS;
         }
-   
     }
 }
 
@@ -569,11 +607,11 @@ void ChattingServer::monitorThread()
 
 namespace
 {
-constexpr WORD COLOR_WHITE  = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY;
-constexpr WORD COLOR_GREEN  = FOREGROUND_GREEN | FOREGROUND_INTENSITY;
+constexpr WORD COLOR_WHITE = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY;
+constexpr WORD COLOR_GREEN = FOREGROUND_GREEN | FOREGROUND_INTENSITY;
 constexpr WORD COLOR_YELLOW = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY;
-constexpr WORD COLOR_RED    = FOREGROUND_RED | FOREGROUND_INTENSITY;
-constexpr WORD COLOR_GRAY   = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
+constexpr WORD COLOR_RED = FOREGROUND_RED | FOREGROUND_INTENSITY;
+constexpr WORD COLOR_GRAY = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
 
 void printRow(std::ostream &out, HANDLE hConsole, const char *label, __int64 value, WORD valueColor)
 {
@@ -593,14 +631,14 @@ std::ostream &operator<<(std::ostream &out, const ChattingServer &server)
     thread_local __int64 beforeSend;
     thread_local __int64 beforeContent;
 
-    __int64 currentAccept  = server.GetAcceptCount();
-    __int64 currentRecv    = server.GetRecvCount();
-    __int64 currentSend    = server.GetSendCount();
+    __int64 currentAccept = server.GetAcceptCount();
+    __int64 currentRecv = server.GetRecvCount();
+    __int64 currentSend = server.GetSendCount();
     __int64 currentContent = server.mContentsTPS;
 
-    __int64 tpsAccept  = currentAccept  - beforeAccept;
-    __int64 tpsRecv    = currentRecv    - beforeRecv;
-    __int64 tpsSend    = currentSend    - beforeSend;
+    __int64 tpsAccept = currentAccept - beforeAccept;
+    __int64 tpsRecv = currentRecv - beforeRecv;
+    __int64 tpsSend = currentSend - beforeSend;
     __int64 tpsContent = currentContent - beforeContent;
 
     SetConsoleTextAttribute(hConsole, COLOR_WHITE);
@@ -609,28 +647,28 @@ std::ostream &operator<<(std::ostream &out, const ChattingServer &server)
 
     SetConsoleTextAttribute(hConsole, COLOR_WHITE);
     out << "[ TPS ]\n";
-    printRow(out, hConsole, "Accept",    tpsAccept,  COLOR_GREEN);
-    printRow(out, hConsole, "Recv",      tpsRecv,    COLOR_GREEN);
-    printRow(out, hConsole, "Send",      tpsSend,    COLOR_GREEN);
-    printRow(out, hConsole, "Contents",  tpsContent, COLOR_GREEN);
-    printRow(out, hConsole, "AccTotal",  currentAccept, COLOR_GRAY);
+    printRow(out, hConsole, "Accept", tpsAccept, COLOR_GREEN);
+    printRow(out, hConsole, "Recv", tpsRecv, COLOR_GREEN);
+    printRow(out, hConsole, "Send", tpsSend, COLOR_GREEN);
+    printRow(out, hConsole, "Contents", tpsContent, COLOR_GREEN);
+    printRow(out, hConsole, "AccTotal", currentAccept, COLOR_GRAY);
 
     out << "\n";
 
     SetConsoleTextAttribute(hConsole, COLOR_WHITE);
     out << "[ State ]\n";
-    printRow(out, hConsole, "Sessions",   server.GetSessionCount(),       COLOR_WHITE);
-    printRow(out, hConsole, "Users",      server.mUserCnt,                COLOR_WHITE);
-    printRow(out, hConsole, "ContentsQ",  server.mContentsQSize,          server.mContentsQSize  > 0 ? COLOR_RED    : COLOR_GREEN);
-    printRow(out, hConsole, "DeferredQ",  server.mDeferredReleaseQSize,   server.mDeferredReleaseQSize > 0 ? COLOR_YELLOW : COLOR_GREEN);
-    printRow(out, hConsole, "Disconnect", server.GetDisConnectCount(),    COLOR_YELLOW);
+    printRow(out, hConsole, "Sessions", server.GetSessionCount(), COLOR_WHITE);
+    printRow(out, hConsole, "Users", server.mUserCnt, COLOR_WHITE);
+    printRow(out, hConsole, "ContentsQ", server.mContentsQSize, server.mContentsQSize > 0 ? COLOR_RED : COLOR_GREEN);
+    printRow(out, hConsole, "DeferredQ", server.mDeferredReleaseQSize, server.mDeferredReleaseQSize > 0 ? COLOR_YELLOW : COLOR_GREEN);
+    printRow(out, hConsole, "Disconnect", server.GetDisConnectCount(), COLOR_YELLOW);
 
     SetConsoleTextAttribute(hConsole, COLOR_GRAY);
     out << "\n";
 
-    beforeAccept  = currentAccept;
-    beforeRecv    = currentRecv;
-    beforeSend    = currentSend;
+    beforeAccept = currentAccept;
+    beforeRecv = currentRecv;
+    beforeSend = currentSend;
     beforeContent = currentContent;
 
     return out;

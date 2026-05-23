@@ -27,7 +27,8 @@ struct Player
           sectorY(0),
           bAuth(false),
           lastTime(0),
-          Nickname{0}
+          Nickname{0},
+          tokenKey{0}
     {
     }
     SOCKADDR_IN Addr;
@@ -38,6 +39,7 @@ struct Player
     __int8 sectorY;
     bool bAuth;
     wchar_t Nickname[20];
+    char tokenKey[20];
     DWORD lastTime;
     __int64 accountNo;
 };
@@ -67,7 +69,7 @@ class ChattingServer : public NetworkLib
 
     void packetProc(Message &msg, Player &player);
 
-    eRedisResult getFixedKeyFromRedis(const __int64 accountNo, __int8 &FK);
+    eRedisResult getFixedKeyFromRedis(const __int64 accountNo, Player &player) const;
     void moveSector(__int64 sessionID, const __int8 beforeX, const __int8 beforeY, const __int8 x, const __int8 y);
     void aroundLockAndSendMsg(__int16 x, __int16 y, wchar_t Nickname[20], __int16 MessageLen, wchar_t *const buffer);
 
@@ -102,7 +104,7 @@ class ChattingServer : public NetworkLib
     size_t mUserCnt;
     Sector sectors[50][50];
 
-    __int64 mContentsTPS; 
+    __int64 mContentsTPS;
     size_t mDeferredReleaseQSize;
     size_t mContentsQSize;
 };
