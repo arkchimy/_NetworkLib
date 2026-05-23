@@ -11,7 +11,11 @@
 namespace network
 {
 ChattingServer::ChattingServer()
-    : hEchoEvent(INVALID_HANDLE_VALUE)
+    : hEchoEvent(INVALID_HANDLE_VALUE),
+      mContentsTPS(0),
+      mDeferredReleaseQSize(0),
+      mContentsQSize(0),
+      mUserCnt(0)
 {
     hEchoEvent = CreateEvent(nullptr, false, false, nullptr);
     mContentsThread = std::thread(&ChattingServer::contentsThread, this);
@@ -37,7 +41,7 @@ void ChattingServer::onRecv(utility::Message *msg)
 {
     std::lock_guard<std::shared_mutex> lock(mQLock);
     mContentsQ.push(msg);
-
+    mContentsQSize = mContentsQ.size();
     RT_ASSERT(hEchoEvent != INVALID_HANDLE_VALUE);
     SetEvent(hEchoEvent);
 }
@@ -62,6 +66,7 @@ void ChattingServer::onRelease(const SeqAndIdx &sessionID)
     *msg << reinterpret_cast<__int64>(player);
 
     pushDeferredQ(*msg);
+
     SetEvent(hEchoEvent);
 }
 bool ChattingServer::popContentsQ(Message **msg)
@@ -73,13 +78,14 @@ bool ChattingServer::popContentsQ(Message **msg)
     }
     *msg = mContentsQ.front();
     mContentsQ.pop();
-
+    mContentsQSize = mContentsQ.size();
     return true;
 }
 void ChattingServer::pushDeferredQ(Message &msg)
 {
     std::lock_guard<std::shared_mutex> lock(mDeferredQLock);
     mDeferredReleaseQ.push(&msg);
+    mDeferredReleaseQSize = mDeferredReleaseQ.size();
 }
 bool ChattingServer::popDeferredQ(Message **msg)
 {
@@ -90,7 +96,7 @@ bool ChattingServer::popDeferredQ(Message **msg)
     }
     *msg = mDeferredReleaseQ.front();
     mDeferredReleaseQ.pop();
-
+    mDeferredReleaseQSize = mDeferredReleaseQ.size();
     return true;
 }
 Player *ChattingServer::validatePlayerOrNull(Message &msg)
@@ -496,7 +502,7 @@ void ChattingServer::contentsThread()
                 RT_ASSERT(iter != mPlayerMap.end());
                 RT_ASSERT(player == iter->second);
                 mPlayerMap.erase(iter);
-                mUserCnt = static_cast<short>(mPlayerMap.size());
+                mUserCnt = mPlayerMap.size();
             }
             {
                 std::lock_guard<std::shared_mutex> lock(sectors[player->sectorX][player->sectorY].mMutex);
@@ -522,6 +528,7 @@ void ChattingServer::contentsThread()
                 continue;
             }
             packetProc(*msg, *player);
+            ++mContentsTPS;
         }
    
     }
@@ -556,20 +563,31 @@ std::ostream &operator<<(std::ostream &out, const ChattingServer &server)
     thread_local __int64 beforeAccept;
     thread_local __int64 beforeRecv;
     thread_local __int64 beforeSend;
+    thread_local __int64 beforeContent;
 
     __int64 currentAccept = server.GetAcceptCount();
     __int64 currentRecv = server.GetRecvCount();
     __int64 currentSend = server.GetSendCount();
+    __int64 currentContent = server.mContentsTPS;
+    
+
     out << "===============================================================\n";
     out << std::setw(10) << "Total AcceptCnt : " << std::setw(10) << currentAccept << "\n";
     out << std::setw(10) << " AcceptCnt TPS : " << std::setw(10) << currentAccept - beforeAccept << "\n";
     out << std::setw(10) << " RecvCnt TPS : " << std::setw(10) << currentRecv - beforeRecv << "\n";
     out << std::setw(10) << " SendCnt TPS : " << std::setw(10) << currentSend - beforeSend << "\n";
+    out << std::setw(10) << " Contents TPS : " << std::setw(10) << currentContent - beforeContent << "\n";
+    out << "===============================================================\n";
+    out << std::setw(10) << " SessionCnt : " << std::setw(10) << server.GetSessionCount() << "\n";
     out << std::setw(10) << " UserCnt : " << std::setw(10) << server.mUserCnt << "\n";
+    out << std::setw(10) << " mContentsQ : " << std::setw(10) << server.mContentsQSize << "\n";
+    out << std::setw(10) << " mDeferredReleaseQ : " << std::setw(10) << server.mDeferredReleaseQSize << "\n";
+    out << std::setw(10) << " Total DisConnect Cnt : " << std::setw(10) << server.GetDisConnectCount() << "\n";
     out << "===============================================================\n";
     beforeAccept = currentAccept;
     beforeRecv = currentRecv;
     beforeSend = currentSend;
+    beforeContent = currentContent;
 
     return out;
 }

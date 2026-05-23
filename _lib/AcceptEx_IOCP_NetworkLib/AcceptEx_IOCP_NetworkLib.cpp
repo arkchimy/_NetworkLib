@@ -28,6 +28,10 @@ void fnAcceptExIOCPNetworkLib()
 namespace network
 {
 NetworkLib::NetworkLib()
+    : mAcceptCnt(0),
+      mSendCnt(0),
+      mRecvCnt(0),
+      mDisConnect(0)
 {
 
     mListenSock = socket(AF_INET, SOCK_STREAM, 0);
@@ -238,7 +242,7 @@ void NetworkLib::completeAcceptEx(Session &session)
     SOCKADDR_IN addr;
     int nameLen = sizeof(addr);
     getpeername(session.mSock, (sockaddr *)&addr, &nameLen);
-
+    _interlockedincrement64(&mSessionCnt);
     onAccept(addr,session.mSessionID);
     registerRecv(session);
 }
@@ -344,13 +348,13 @@ void NetworkLib::registerSend(Session &session)
 
     if (msgCnt == 0)
     {
-        if (_InterlockedCompareExchange8(&session.mSendFlag, false,true) == true)
+        if (_InterlockedCompareExchange8(&session.mSendFlag, 0,1) == 1)
         {
             msgCnt = static_cast<__int16>(CONFIG_SEND_MESSAGE_MAXCOUNT < session.mSenqQSize ?
                 CONFIG_SEND_MESSAGE_MAXCOUNT : session.mSenqQSize);
             if (msgCnt != 0)
             {
-                if (_InterlockedCompareExchange8(&session.mSendFlag, true, false) == false)
+                if (_InterlockedCompareExchange8(&session.mSendFlag, 1, 0) == 0)
                 {
                     ZeroMemory(&sendOv, sizeof(OVERLAPPED));
                     short ioCount = InterlockedIncrement16(&session.mIOcnt);
@@ -413,6 +417,8 @@ void NetworkLib::completeRelease(Session &session)
     //std::cout << "Release " << "session_sock : " << session.mSock << "ID:" << session.mSessionID.Value << "\n";
     session.ReleaseSession();
     onRelease(session.mSessionID);
+
+    _InterlockedDecrement64(&mSessionCnt);
 
     stackSessionIdx_Push(session.mSessionID.Idx);
     registerAcceptEx();
@@ -547,6 +553,7 @@ void NetworkLib::disconnectSession(const SeqAndIdx& sessionID)
     CancelIoEx((HANDLE)session.mSock, session.mRecvOv);
 
     sessionUnLock(sessionID);
+    _InterlockedIncrement64(&mDisConnect);
 }
 
 }; // namespace network

@@ -32,6 +32,8 @@ class NetworkLib
     __int64 GetAcceptCount() const { return mAcceptCnt; }
     __int64 GetSendCount() const { return mSendCnt; }
     __int64 GetRecvCount() const { return mRecvCnt; }
+    __int64 GetDisConnectCount() const { return mDisConnect; }
+    __int64 GetSessionCount() const { return mSessionCnt; }
   protected:
     void disconnectSession(const SeqAndIdx& sessionID);
 
@@ -72,6 +74,8 @@ class NetworkLib
     __int64 mAcceptCnt;
     __int64 mSendCnt;
     __int64 mRecvCnt;
+    __int64 mDisConnect;
+    __int64 mSessionCnt;
 };
 
 } // namespace network
