@@ -185,7 +185,7 @@ bool ChatDummyClient::authFlow(SOCKET sock, __int32 &seqNum, __int8 &outX, __int
     return true;
 }
 
-bool ChatDummyClient::mainLoop(SOCKET sock, __int32 &seqNum, __int8 &sectorX, __int8 &sectorY)
+bool ChatDummyClient::mainLoop(SOCKET sock, __int32 &seqNum, __int8 &sectorX, __int8 &sectorY, int &pendingChat)
 {
     for (int i = 0; i < MAIN_LOOP_CNT; ++i)
     {
@@ -227,16 +227,17 @@ bool ChatDummyClient::mainLoop(SOCKET sock, __int32 &seqNum, __int8 &sectorX, __
             if (!safeSend(sock, (char *)&pkt, sizeof(pkt))) return false;
             seqNum++;
             mChatCnt.fetch_add(1, std::memory_order_relaxed);
+            ++pendingChat;
         }
 
-        // 쌓인 SC_CHAT 소비 (블로킹 없이)
-        drainRecv(sock);
+        pendingChat -= drainRecv(sock);
     }
     return true;
 }
 
-void ChatDummyClient::drainRecv(SOCKET sock)
+int ChatDummyClient::drainRecv(SOCKET sock)
 {
+    int received = 0;
     u_long avail = 0;
     while (ioctlsocket(sock, FIONREAD, &avail) == 0 && avail >= sizeof(PktHeader))
     {
@@ -251,8 +252,12 @@ void ChatDummyClient::drainRecv(SOCKET sock)
         __int16 type;
         memcpy(&type, payload, sizeof(type));
         if (static_cast<ePacketType>(type) == ePacketType::SC_CHAT)
+        {
             mRecvChatCnt.fetch_add(1, std::memory_order_relaxed);
+            ++received;
+        }
     }
+    return received;
 }
 
 void ChatDummyClient::clientThread()
@@ -281,8 +286,18 @@ void ChatDummyClient::clientThread()
             continue;
         }
 
-        if (!mainLoop(sock, seqNum, sectorX, sectorY))
+        int pendingChat = 0;
+        if (!mainLoop(sock, seqNum, sectorX, sectorY, pendingChat))
             mErrCnt.fetch_add(1, std::memory_order_relaxed);
+
+        while (pendingChat > 0)
+        {
+            int got = drainRecv(sock);
+            if (got > 0)
+                pendingChat -= got;
+            else
+                Sleep(1);
+        }
 
         closesocket(sock);
     }
