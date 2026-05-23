@@ -513,7 +513,8 @@ void ChattingServer::contentsThread()
         }
         
         msg = nullptr;
-        while (1)
+        size_t useSize = mContentsQSize;
+        while (useSize)
         {
             if (!popContentsQ(&msg))
             {
@@ -529,6 +530,8 @@ void ChattingServer::contentsThread()
             }
             packetProc(*msg, *player);
             ++mContentsTPS;
+            // Cap
+            --useSize;
         }
    
     }
