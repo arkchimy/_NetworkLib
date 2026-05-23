@@ -3,6 +3,7 @@
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 #include <atomic>
+#include <conio.h>
 #include <thread>
 #include <vector>
 
@@ -17,6 +18,7 @@ class ChatDummyClient
   private:
     void clientThread();
     void monitorThread();
+    void inputThread();
 
     SOCKET connectToServer();
     bool loginFlow(SOCKET sock, __int64 accountNo, __int32 &outSeqNum);
@@ -31,13 +33,16 @@ class ChatDummyClient
 
     std::vector<std::thread> mThreadVec;
     std::thread              mMonitorThread;
+    std::thread              mInputThread;
 
     std::atomic<__int64> mNextAccountNo{1};
     std::atomic<__int64> mLoginCnt{0};
     std::atomic<__int64> mMoveCnt{0};
     std::atomic<__int64> mChatCnt{0};
+    std::atomic<__int64> mRecvChatCnt{0};
     std::atomic<__int64> mErrCnt{0};
-    std::atomic<__int64> mReconnectCnt{0};
+    std::atomic<__int64> mConnectTotal{0};
+    std::atomic<bool>    mPaused{false};
 };
 
 struct MyWsaData

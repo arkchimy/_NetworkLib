@@ -104,12 +104,14 @@ void ChatDummyClient::Start(const char *ip, __int16 port)
     mServerPort = port;
 
     mMonitorThread = std::thread(&ChatDummyClient::monitorThread, this);
+    mInputThread   = std::thread(&ChatDummyClient::inputThread, this);
     mThreadVec.resize(mUserCnt);
     for (int i = 0; i < mUserCnt; ++i)
         mThreadVec[i] = std::thread(&ChatDummyClient::clientThread, this);
 
     for (auto &t : mThreadVec) t.join();
     mMonitorThread.join();
+    mInputThread.join();
 }
 
 SOCKET ChatDummyClient::connectToServer()
@@ -236,11 +238,20 @@ bool ChatDummyClient::mainLoop(SOCKET sock, __int32 &seqNum, __int8 &sectorX, __
 void ChatDummyClient::drainRecv(SOCKET sock)
 {
     u_long avail = 0;
-    char   buf[2048];
-    while (ioctlsocket(sock, FIONREAD, &avail) == 0 && avail > 0)
+    while (ioctlsocket(sock, FIONREAD, &avail) == 0 && avail >= sizeof(PktHeader))
     {
-        int toRead = (avail > sizeof(buf)) ? (int)sizeof(buf) : (int)avail;
-        if (recv(sock, buf, toRead, 0) <= 0) break;
+        PktHeader hdr;
+        if (!safeRecv(sock, (char *)&hdr, sizeof(hdr))) break;
+
+        if (hdr.Len <= 0 || hdr.Len > 2048) break;
+
+        char payload[2048];
+        if (!safeRecv(sock, payload, hdr.Len)) break;
+
+        __int16 type;
+        memcpy(&type, payload, sizeof(type));
+        if (static_cast<ePacketType>(type) == ePacketType::SC_CHAT)
+            mRecvChatCnt.fetch_add(1, std::memory_order_relaxed);
     }
 }
 
@@ -250,10 +261,13 @@ void ChatDummyClient::clientThread()
 
     while (true)
     {
+        while (mPaused.load(std::memory_order_relaxed))
+            Sleep(100);
+
         SOCKET sock = connectToServer();
         if (sock == INVALID_SOCKET) { Sleep(100); continue; }
 
-        mReconnectCnt.fetch_add(1, std::memory_order_relaxed);
+        mConnectTotal.fetch_add(1, std::memory_order_relaxed);
 
         __int32 seqNum  = 0;
         __int8  sectorX = 0, sectorY = 0;
@@ -274,36 +288,98 @@ void ChatDummyClient::clientThread()
     }
 }
 
+void ChatDummyClient::inputThread()
+{
+    while (true)
+    {
+        if (_kbhit())
+        {
+            char c = _getch();
+            if (c == 's' || c == 'S')
+                mPaused.store(!mPaused.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        }
+        Sleep(10);
+    }
+}
+
 void ChatDummyClient::monitorThread()
 {
     timeBeginPeriod(1);
+
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+
+    CONSOLE_CURSOR_INFO cursorInfo;
+    GetConsoleCursorInfo(hConsole, &cursorInfo);
+    cursorInfo.bVisible = false;
+    SetConsoleCursorInfo(hConsole, &cursorInfo);
+
+    constexpr WORD COLOR_WHITE  = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY;
+    constexpr WORD COLOR_GREEN  = FOREGROUND_GREEN | FOREGROUND_INTENSITY;
+    constexpr WORD COLOR_YELLOW = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY;
+    constexpr WORD COLOR_RED    = FOREGROUND_RED | FOREGROUND_INTENSITY;
+    constexpr WORD COLOR_GRAY   = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
+
     constexpr int interval = 1000;
     DWORD nextTime = timeGetTime() + interval;
 
-    __int64 beforeLogin = 0;
-    __int64 beforeMove  = 0;
-    __int64 beforeChat  = 0;
+    __int64 beforeLogin    = 0;
+    __int64 beforeMove     = 0;
+    __int64 beforeChat     = 0;
+    __int64 beforeRecvChat = 0;
 
     while (true)
     {
         DWORD now = timeGetTime();
         if (nextTime <= now)
         {
-            __int64 curLogin = mLoginCnt.load();
-            __int64 curMove  = mMoveCnt.load();
-            __int64 curChat  = mChatCnt.load();
+            __int64 curLogin    = mLoginCnt.load();
+            __int64 curMove     = mMoveCnt.load();
+            __int64 curChat     = mChatCnt.load();
+            __int64 curRecvChat = mRecvChatCnt.load();
+            __int64 unreceived  = curChat - curRecvChat;
 
-            std::cout
-                << std::setw(18) << "LoginTPS  : " << std::setw(8) << curLogin - beforeLogin << "\n"
-                << std::setw(18) << "MoveTPS   : " << std::setw(8) << curMove  - beforeMove  << "\n"
-                << std::setw(18) << "ChatTPS   : " << std::setw(8) << curChat  - beforeChat  << "\n"
-                << std::setw(18) << "Reconnect : " << std::setw(8) << mReconnectCnt.load()   << "\n"
-                << std::setw(18) << "ErrCnt    : " << std::setw(8) << mErrCnt.load()         << "\n"
-                << "--------------------------------\n";
+            COORD coord = {0, 0};
+            SetConsoleCursorPosition(hConsole, coord);
 
-            beforeLogin = curLogin;
-            beforeMove  = curMove;
-            beforeChat  = curChat;
+            bool paused = mPaused.load(std::memory_order_relaxed);
+
+            SetConsoleTextAttribute(hConsole, COLOR_WHITE);
+            std::cout << "=== ChatDummy Monitor [";
+            SetConsoleTextAttribute(hConsole, paused ? COLOR_RED : COLOR_GREEN);
+            std::cout << (paused ? "PAUSED " : "RUNNING");
+            SetConsoleTextAttribute(hConsole, COLOR_WHITE);
+            std::cout << "] (s: pause/resume) ===\n\n";
+
+            auto printRow = [&](const char *label, __int64 value, WORD valueColor)
+            {
+                SetConsoleTextAttribute(hConsole, COLOR_GRAY);
+                std::cout << "  " << std::left << std::setw(14) << label << ": ";
+                SetConsoleTextAttribute(hConsole, valueColor);
+                std::cout << std::right << std::setw(8) << value << "\n";
+            };
+
+            SetConsoleTextAttribute(hConsole, COLOR_WHITE);
+            std::cout << "[ TPS ]\n";
+            printRow("Login",    curLogin    - beforeLogin,    COLOR_GREEN);
+            printRow("Move",     curMove     - beforeMove,     COLOR_GREEN);
+            printRow("ChatSent", curChat     - beforeChat,     COLOR_GREEN);
+            printRow("ChatRecv", curRecvChat - beforeRecvChat, COLOR_GREEN);
+
+            std::cout << "\n";
+
+            SetConsoleTextAttribute(hConsole, COLOR_WHITE);
+            std::cout << "[ State ]\n";
+            printRow("ConnTotal",  mConnectTotal.load(), COLOR_WHITE);
+            printRow("Unreceived", unreceived,           unreceived > 0 ? COLOR_YELLOW : COLOR_GREEN);
+            printRow("ErrCnt",     mErrCnt.load(),       mErrCnt.load() > 0 ? COLOR_RED : COLOR_GREEN);
+
+            SetConsoleTextAttribute(hConsole, COLOR_GRAY);
+            std::cout << "\n";
+
+            beforeLogin    = curLogin;
+            beforeMove     = curMove;
+            beforeChat     = curChat;
+            beforeRecvChat = curRecvChat;
             nextTime += interval;
         }
         else
