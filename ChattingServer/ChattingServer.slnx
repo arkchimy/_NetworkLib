@@ -5,5 +5,6 @@
   </Configurations>
   <Project Path="../_lib/AcceptEx_IOCP_NetworkLib/AcceptEx_IOCP_NetworkLib.vcxproj" Id="50cc943c-da7a-4670-b695-4f35da14bf9f" />
   <Project Path="../_lib/CrushDump_lib/CrushDump_lib.vcxproj" Id="4e2aadba-fb6a-489d-9070-59bbb3778dc0" />
+  <Project Path="../_lib/MTProfiler_Lib/MTProfiler_Lib.vcxproj" Id="6c0df0ee-f9b3-460c-9a0f-67a432b7b9e0" />
   <Project Path="ChattingServer.vcxproj" Id="0eb42297-0002-4702-b198-9fb5c046f9a7" />
 </Solution>
