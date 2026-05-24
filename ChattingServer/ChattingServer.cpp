@@ -303,7 +303,7 @@ void ChattingServer::makeLoginMessage(const __int8 FK, const eRedisResult &resul
     //  __int8  Result
     //  __int32 SeqNumber
     //}// 이때 랜덤값으로 클라이언트에게 송신
-    __int8 RK = rand() % UCHAR_MAX + 1;
+    __int8 RK = rand() % UCHAR_MAX;
     msg.InitMessage(sessionID, RK);
 
     __int16 type = static_cast<__int16>(ePacketType::SC_LOGIN);
@@ -328,7 +328,7 @@ void ChattingServer::makeAuthMessage(const __int8 FK, const __int64 sessionID, c
     //}  초기 생성 위치. 그리고 실패시 server에서는 보낸것 확인 후 끊기
     __int16 type = static_cast<__int16>(ePacketType::SC_AUTH);
 
-    __int8 RK = rand() % UCHAR_MAX + 1;
+    __int8 RK = rand() % UCHAR_MAX;
     msg.InitMessage(sessionID, RK);
 
     Header header;
@@ -351,7 +351,7 @@ void ChattingServer::makeChatMessage(const __int8 FK, const __int64 sessionID, w
     //}
     __int16 type = static_cast<__int16>(ePacketType::SC_CHAT);
 
-    __int8 RK = rand() % UCHAR_MAX + 1;
+    __int8 RK = rand() % UCHAR_MAX;
     msg.InitMessage(sessionID, RK);
 
     Header header;
