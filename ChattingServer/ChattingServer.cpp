@@ -1,11 +1,11 @@
 
+#include <iomanip>
 #include <shared_mutex>
 
 #include "ChattingServer.h"
 #include "PacketCommon.h"
-#include <iomanip>
-#include <timeapi.h>
 
+#include <timeapi.h>
 #pragma comment(lib, "winmm.lib")
 
 thread_local cpp_redis::client *gRedisClient;
@@ -25,19 +25,15 @@ ChattingServer::ChattingServer()
 
     start();
 }
-void ChattingServer::onAccept(const SOCKADDR_IN &addr, const SeqAndIdx &sessionID)
+void ChattingServer::onAccept(SOCKADDR_IN &addr, const SeqAndIdx &sessionID)
 {
-    Player &player = *MY_NEW Player();
-    player.Addr = addr;
-    InterlockedExchange64(&player.SessionID.Value, sessionID.Value);
-    {
-        std::lock_guard<std::shared_mutex> lock(mPlayerMapLock);
-        auto iter = mPlayerMap.find(sessionID.Value);
-        // 같은 sessionID로 두번연속 올수 없음.
-        RT_ASSERT(iter == mPlayerMap.end());
-        mPlayerMap.insert({sessionID.Value, &player});
-        mUserCnt = mPlayerMap.size();
-    }
+    Message &msg = *MY_NEW Message();
+    msg.InitMessage(sessionID.Value, '\xFF');
+    msg << static_cast<__int16>(ePacketType::CHAT_PLAYER_ALLOC);
+    msg.PutData(&addr, sizeof(SOCKADDR_IN));
+    pushContentsQ(&msg);
+
+    SetEvent(hEchoEvent);
 }
 void ChattingServer::onRecv(utility::Message *msg)
 {
@@ -53,21 +49,10 @@ void ChattingServer::onSend(utility::Message *msg)
 }
 void ChattingServer::onRelease(const SeqAndIdx &sessionID)
 {
-    Player *player = nullptr;
-    {
-        std::lock_guard<std::shared_mutex> lock(mPlayerMapLock);
-        auto iter = mPlayerMap.find(sessionID.Value);
-
-        RT_ASSERT(iter != mPlayerMap.end());
-        player = iter->second;
-    }
-
-    // Why : Contents에서 Player에대한 접근이 이루어짐. 이떄 여기서 할당해제하면 댕글링
-    Message *msg = MY_NEW(Message);
-    msg->InitMessage(sessionID.Value, '\xFF');
-    *msg << reinterpret_cast<__int64>(player);
-
-    pushDeferredQ(*msg);
+    Message &msg = *MY_NEW Message();
+    msg.InitMessage(sessionID.Value, '\xFF');
+    msg << static_cast<__int16>(ePacketType::CHAT_PLAYER_DELETE);
+    pushContentsQ(&msg);
 
     SetEvent(hEchoEvent);
 }
@@ -83,37 +68,25 @@ bool ChattingServer::popContentsQ(Message **msg)
     mContentsQSize = mContentsQ.size();
     return true;
 }
-void ChattingServer::pushDeferredQ(Message &msg)
+
+void ChattingServer::pushContentsQ(Message *msg)
 {
-    std::lock_guard<std::shared_mutex> lock(mDeferredQLock);
-    mDeferredReleaseQ.push(&msg);
-    mDeferredReleaseQSize = mDeferredReleaseQ.size();
+    std::lock_guard<std::shared_mutex> lock(mQLock);
+    mContentsQ.push(msg);
+    mContentsQSize = mContentsQ.size();
 }
-bool ChattingServer::popDeferredQ(Message **msg)
-{
-    std::lock_guard<std::shared_mutex> lock(mDeferredQLock);
-    if (mDeferredReleaseQ.empty())
-    {
-        return false;
-    }
-    *msg = mDeferredReleaseQ.front();
-    mDeferredReleaseQ.pop();
-    mDeferredReleaseQSize = mDeferredReleaseQ.size();
-    return true;
-}
+
 Player *ChattingServer::validatePlayerOrNull(Message &msg)
 {
     Player *player = nullptr;
     __int64 ownerID = msg.GetOwnerID();
-    SeqAndIdx seqIdx{0};
-    seqIdx.Value = ownerID;
-
     __int8 FK;
     {
-        std::shared_lock<std::shared_mutex> slock(mPlayerMapLock);
+        // std::shared_lock<std::shared_mutex> slock(mPlayerMapLock);
         auto iter = mPlayerMap.find(ownerID);
         if (iter == mPlayerMap.end())
         {
+            MY_DELETE msg;
             return nullptr;
         }
         player = iter->second;
@@ -138,16 +111,34 @@ bool ChattingServer::isValidateSeqNumber(Message &msg, Player &player)
     return true;
 }
 
-void ChattingServer::packetProc(Message &msg, Player &player)
+void ChattingServer::packetProc(Message &msg)
 {
     __int16 wType;
     msg >> wType;
     ePacketType type = static_cast<ePacketType>(wType);
 
+    switch (type)
+    {
+    case ePacketType::CHAT_PLAYER_ALLOC:
+    case ePacketType::CHAT_PLAYER_DELETE:
+        chatProc(msg, wType);
+        return;
+    }
+
+    Player *playerNullTest = validatePlayerOrNull(msg);
+
+    if (playerNullTest == nullptr)
+    {
+        // 맵에서 찾지 못했음. 내부에서 msg 반환
+        return;
+    }
+    Player& player = *playerNullTest;
+  
     if (isValidateSeqNumber(msg, player) == false)
     {
         return;
     }
+
 
     switch (type)
     {
@@ -225,8 +216,8 @@ void ChattingServer::moveSector(__int64 sessionID, const __int8 beforeX, const _
 
     if (before < after)
     {
-        std::lock_guard<std::shared_mutex> xlock1(beforeSector.mMutex);
-        std::lock_guard<std::shared_mutex> xlock2(afterSector.mMutex);
+        // std::lock_guard<std::shared_mutex> xlock1(beforeSector.mMutex);
+        // std::lock_guard<std::shared_mutex> xlock2(afterSector.mMutex);
 
         auto iter = beforeSector.mPlayers.find(sessionID);
         RT_ASSERT(iter != beforeSector.mPlayers.end());
@@ -241,8 +232,8 @@ void ChattingServer::moveSector(__int64 sessionID, const __int8 beforeX, const _
     }
     else
     {
-        std::lock_guard<std::shared_mutex> xlock2(afterSector.mMutex);
-        std::lock_guard<std::shared_mutex> xlock1(beforeSector.mMutex);
+        // std::lock_guard<std::shared_mutex> xlock2(afterSector.mMutex);
+        // std::lock_guard<std::shared_mutex> xlock1(beforeSector.mMutex);
 
         auto iter = beforeSector.mPlayers.find(sessionID);
         RT_ASSERT(iter != beforeSector.mPlayers.end());
@@ -262,9 +253,9 @@ void ChattingServer::aroundLockAndSendMsg(__int16 x, __int16 y, wchar_t Nickname
     __int16 dx[] = {-1, -1, -1, +0, 0, 0, +1, 1, 1};
     __int16 dy[] = {-1, +0, +1, -1, 0, 1, -1, 0, 1};
 
-    std::vector<std::shared_lock<std::shared_mutex>> vec;
+    // std::vector<std::shared_lock<std::shared_mutex>> vec;
     std::vector<std::pair<__int16, __int16>> pos;
-    vec.reserve(9);
+    // vec.reserve(9);
     pos.reserve(9);
     int vecSize = 0;
     for (__int16 loop = 0; loop < 9; ++loop)
@@ -276,7 +267,7 @@ void ChattingServer::aroundLockAndSendMsg(__int16 x, __int16 y, wchar_t Nickname
             continue;
         }
         ++vecSize;
-        vec.emplace_back(sectors[rx][ry].mMutex);
+        // vec.emplace_back(sectors[rx][ry].mMutex);
         pos.emplace_back(std::make_pair(rx, ry));
     }
     for (int idx = 0; idx < vecSize; ++idx)
@@ -436,7 +427,7 @@ void ChattingServer::authProc(Message &msg, Player &player)
     player.bAuth = true;
     {
         Sector &sector = sectors[SectorX][SectorY];
-        std::lock_guard<std::shared_mutex> lock(sector.mMutex);
+        // std::lock_guard<std::shared_mutex> lock(sector.mMutex);
         auto iter = sector.mPlayers.find(player.SessionID.Value);
         RT_ASSERT(iter == sector.mPlayers.end());
         sector.mPlayers.insert({player.SessionID.Value, &player});
@@ -520,7 +511,7 @@ void ChattingServer::chatMessageProc(Message &msg, Player &player)
 
 void ChattingServer::contentsThread()
 {
-    
+
     cpp_redis::client Client;
     gRedisClient = &Client;
     gRedisClient->connect(CONFIG_REDIS_IP, CONFIG_REDIS_PORT);
@@ -531,51 +522,14 @@ void ChattingServer::contentsThread()
         retval = WaitForSingleObject(hEchoEvent, 1000);
         Message *msg = nullptr;
         RT_ASSERT(retval != WAIT_FAILED);
-        // 지연 삭제
-        while (1)
-        {
-            if (!popDeferredQ(&msg))
-            {
-                break;
-            }
-            RT_ASSERT(msg != nullptr);
-            __int64 playerPtr;
-            *msg >> playerPtr;
-
-            Player *player = reinterpret_cast<Player *>(playerPtr);
-            {
-                std::lock_guard<std::shared_mutex> lock(mPlayerMapLock);
-                auto iter = mPlayerMap.find(player->SessionID.Value);
-
-                RT_ASSERT(iter != mPlayerMap.end());
-                RT_ASSERT(player == iter->second);
-                mPlayerMap.erase(iter);
-                mUserCnt = mPlayerMap.size();
-            }
-            {
-                std::lock_guard<std::shared_mutex> lock(sectors[player->sectorX][player->sectorY].mMutex);
-                sectors[player->sectorX][player->sectorY].mPlayers.erase(player->SessionID.Value);
-            }
-            MY_DELETE player;
-            MY_DELETE msg;
-        }
-
-        msg = nullptr;
         while (1)
         {
             if (!popContentsQ(&msg))
             {
                 break;
             }
-
             RT_ASSERT(msg != nullptr);
-            Player *player = validatePlayerOrNull(*msg);
-            if (player == nullptr)
-            {
-                MY_DELETE msg;
-                continue;
-            }
-            packetProc(*msg, *player);
+            packetProc(*msg);
             ++mContentsTPS;
         }
     }
@@ -612,6 +566,61 @@ void ChattingServer::monitorThread()
         }
     }
     timeEndPeriod(1);
+}
+
+void ChattingServer::chatProc(Message &msg, __int16 wType)
+{
+
+    ePacketType packType = static_cast<ePacketType>(wType);
+    switch (packType)
+    {
+    case ePacketType::CHAT_PLAYER_ALLOC:
+        chatPlayerAlloc(msg);
+        break;
+    case ePacketType::CHAT_PLAYER_DELETE:
+        chatPlayerDelete(msg);
+        break;
+    default:
+        RT_ASSERT(FALSE);
+    }
+}
+
+void ChattingServer::chatPlayerAlloc(Message &msg)
+{
+    Player& player = *MY_NEW Player();
+    ull sessionID = msg.GetOwnerID();
+
+    SOCKADDR_IN addr{0};
+    msg.GetData(&addr, sizeof(addr));
+
+    auto iter = mPlayerMap.find(sessionID);
+    RT_ASSERT(iter == mPlayerMap.end());
+    player.SessionID.Value = sessionID;
+    player.Addr = addr;
+
+    mPlayerMap.insert({sessionID, &player});
+    MY_DELETE & msg;
+}
+
+void ChattingServer::chatPlayerDelete(Message &msg)
+{
+
+    __int64 sessionID = msg.GetOwnerID();
+
+    auto iter = mPlayerMap.find(sessionID);
+    RT_ASSERT(iter != mPlayerMap.end());
+
+    Player &player = *iter->second;
+    if (player.bAuth)
+    {
+        __int8 x = player.sectorX;
+        __int8 y = player.sectorY;
+        auto iter2 = sectors[x][y].mPlayers.find(sessionID);
+        sectors[x][y].mPlayers.erase(iter2);
+    }
+    mPlayerMap.erase(sessionID);
+    MY_DELETE & msg;
+    MY_DELETE & player;
 }
 
 namespace

@@ -45,7 +45,7 @@ struct Player
 };
 struct Sector
 {
-    std::shared_mutex mMutex;
+    //std::shared_mutex mMutex;
     std::unordered_map<__int64, Player *> mPlayers;
 };
 class ChattingServer : public NetworkLib
@@ -55,19 +55,18 @@ class ChattingServer : public NetworkLib
     friend std::ostream &operator<<(std::ostream &out, const ChattingServer &server);
 
   private:
-    virtual void onAccept(const SOCKADDR_IN &addr, const SeqAndIdx &sessionID);
+    virtual void onAccept(SOCKADDR_IN &addr, const SeqAndIdx &sessionID);
     virtual void onRecv(Message *msg);
     virtual void onSend(Message *msg);
     virtual void onRelease(const SeqAndIdx &sessionID);
 
     bool popContentsQ(Message **msg);
-    void pushDeferredQ(Message &msg);
-    bool popDeferredQ(Message **msg);
+    void pushContentsQ(Message *msg);
 
     Player *validatePlayerOrNull(Message &msg);
     bool isValidateSeqNumber(Message &msg, Player &player);
 
-    void packetProc(Message &msg, Player &player);
+    void packetProc(Message &msg);
 
     eRedisResult getFixedKeyFromRedis(const __int64 accountNo, Player &player) const;
     void moveSector(__int64 sessionID, const __int8 beforeX, const __int8 beforeY, const __int8 x, const __int8 y);
@@ -86,6 +85,9 @@ class ChattingServer : public NetworkLib
     void contentsThread();
     void monitorThread();
 
+    void chatProc(Message& msg,__int16 wType);
+    void chatPlayerAlloc(Message& msg);
+    void chatPlayerDelete(Message &msg);
   private:
     std::thread mContentsThread;
     std::thread mMonitorThread;
@@ -98,7 +100,7 @@ class ChattingServer : public NetworkLib
     std::shared_mutex mDeferredQLock;
     std::queue<Message *> mDeferredReleaseQ;
 
-    std::shared_mutex mPlayerMapLock;
+    //std::shared_mutex mPlayerMapLock;
     std::map<__int64, Player *> mPlayerMap;
 
     size_t mUserCnt;

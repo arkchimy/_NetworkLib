@@ -68,4 +68,19 @@ enum class ePacketType : __int16
     //  __int16 MessageLen
     //  wchar_t Message[MessageLen]
     //}
+
+    //------------------------------------------------------
+    // Chatting Server Only   내부에서만 씀
+    //------------------------------------------------------
+    // 
+    // msg.InitMessage(sessionID.Value, '\xFF'); 여기에 sessionID정보가 존재.
+    CHAT_PLAYER_ALLOC = 100,
+    // {
+    //   __int16 Type;
+    //   SOCKADDR_IN addr;
+    // }
+    CHAT_PLAYER_DELETE = 101,
+    // {
+    //   __int16 Type;
+    // }
 };

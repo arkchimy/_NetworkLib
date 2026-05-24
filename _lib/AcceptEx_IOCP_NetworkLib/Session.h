@@ -10,7 +10,7 @@
 namespace network
 {
 using ull = unsigned long long;
-using seqAddrType = long long;
+using seqAddrType = __int64;
 
 struct SeqAndIdx
 {

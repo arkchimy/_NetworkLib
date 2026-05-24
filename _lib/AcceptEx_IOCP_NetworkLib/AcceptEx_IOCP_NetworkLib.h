@@ -21,7 +21,7 @@ class NetworkLib
 
   protected:
     void start();
-    virtual void onAccept(const SOCKADDR_IN& addr, const SeqAndIdx &sessionID) = 0;
+    virtual void onAccept(SOCKADDR_IN& addr, const SeqAndIdx &sessionID) = 0;
     virtual void onRecv(utility::Message *msg) = 0;
     virtual void onSend(utility::Message *msg) = 0;
     virtual void onRelease(const SeqAndIdx &sessionID) = 0;
