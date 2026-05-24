@@ -600,6 +600,7 @@ void ChattingServer::chatPlayerAlloc(Message &msg)
 
     mPlayerMap.insert({sessionID, &player});
     MY_DELETE & msg;
+    ++mUserCnt;
 }
 
 void ChattingServer::chatPlayerDelete(Message &msg)
@@ -621,6 +622,7 @@ void ChattingServer::chatPlayerDelete(Message &msg)
     mPlayerMap.erase(sessionID);
     MY_DELETE & msg;
     MY_DELETE & player;
+    --mUserCnt;
 }
 
 namespace

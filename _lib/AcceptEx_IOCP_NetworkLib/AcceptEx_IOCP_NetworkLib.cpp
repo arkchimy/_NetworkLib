@@ -392,7 +392,6 @@ void NetworkLib::completeRelease(Session &session)
 
     session.ReleaseSession();
     stackSessionIdx_Push(session.mSessionID.Idx);
-    Sleep(1000);
     registerAcceptEx();
 }
 void NetworkLib::checkAndHandleIoError(Session &session, const int lastError)
