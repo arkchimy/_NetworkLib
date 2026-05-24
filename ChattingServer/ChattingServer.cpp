@@ -392,7 +392,6 @@ void ChattingServer::loginProc(Message &msg, Player &player)
     player.accountNo = accountNo;
 
     makeLoginMessage(player.SessionFK, bRetval, seqNumber, player.SessionID.Value, msg);
-    RT_ASSERT(sendQSize(player.SessionID) == 0);
     // std::cout <<std::right << std::setw(10) << "loginProc" << std::setw(8) << player.SessionID.Value
     //           << std::setw(10) << "AccounNo :" << std::setw(8) << accountNo << "\n";
     sendPost(player.SessionID, msg);

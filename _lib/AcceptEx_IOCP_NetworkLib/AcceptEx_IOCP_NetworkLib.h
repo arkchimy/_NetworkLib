@@ -27,7 +27,6 @@ class NetworkLib
     virtual void onRelease(const SeqAndIdx &sessionID) = 0;
 
     void sendPost(const SeqAndIdx& sessionID, utility::Message &msg);
-    short sendQSize(const SeqAndIdx &sessionID);
   public:
     __int64 GetAcceptCount() const { return mAcceptCnt; }
     __int64 GetSendCount() const { return mSendCnt; }

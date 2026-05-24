@@ -530,14 +530,7 @@ void NetworkLib::sendPost(const SeqAndIdx& sessionID, utility::Message &msg)
     sessionUnLock(sessionID);
 }
 
-short NetworkLib::sendQSize(const SeqAndIdx &sessionID)
-{
-    Session &session = mSessions[sessionID.Idx];
-    utility::Message* msg = mSessions->DeQueueMsgOrNull();
-    if (msg == nullptr)
-        return 0;
-    return 1;
-}
+
 
 void NetworkLib::disconnectSession(const SeqAndIdx& sessionID)
 {
