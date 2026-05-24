@@ -5,7 +5,7 @@
 #pragma comment(lib, "tacopie.lib")
 #pragma comment(lib, "ws2_32.lib")
 
-constexpr char CONFIG_REDIS_IP[] = "127.0.0.1";
+constexpr char CONFIG_REDIS_IP[] = "192.168.45.97";
 constexpr short CONFIG_REDIS_PORT = 6379;
 
 enum eContentsConfig
