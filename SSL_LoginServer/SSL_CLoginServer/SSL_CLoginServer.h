@@ -85,7 +85,7 @@ class SSL_CLoginServer : public CLanServer
     void DB_PacketProc(CMessage *msg);
     void PacketProc_LoginAuth(ull SessionID, CMessage *msg);
     BYTE WaitDB(WCHAR *ID, WCHAR *Password, int& outAccountNo);
-
+    void makeToken(char* buffer);
   private:
     virtual bool OnAccept(ull SessionID, SOCKADDR_IN &addr);
     virtual void OnRecv(ull SessionID, struct CMessage *msg);

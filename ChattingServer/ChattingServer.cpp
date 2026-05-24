@@ -182,28 +182,37 @@ void ChattingServer::packetProc(Message &msg, Player &player)
     }
 }
 
+std::string HgetSync(cpp_redis::client &client,
+                     const std::string &key,
+                     const std::string &field)
+{
+    std::promise<std::string> prom;
+    auto fut = prom.get_future();
+
+    client.hget(key, field, [&prom](cpp_redis::reply &reply)
+                { prom.set_value(reply.is_null() ? "" : reply.as_string()); });
+
+    client.sync_commit();
+    return fut.get();
+}
+
 eRedisResult ChattingServer::getFixedKeyFromRedis(__int64 accountNo, Player &player) const
 {
-    // TODO : Redis에서 accountNo 를 Key로 FK를 가져오고 반환값을 통해 상태를 전송.
-    cpp_redis::reply result;
-    gRedisClient->hmget("session:" + std::to_string(accountNo), {"encKey", "tokenKey"},
-                        [&result](cpp_redis::reply &r)
-                        { result = r; });
-    gRedisClient->sync_commit();
-    if (!result.is_array())
-    {
-        return eRedisResult::Redis_No_Data;
-    }
-    auto &arr = result.as_array();
-    if (arr[0].is_null() || arr[1].is_null())
-    {
-        return eRedisResult::Redis_No_Data;
-    }
-    // Why : LoginServer의 실수
-    RT_ASSERT(arr[1].as_string().size() == CONFIG_TOKENKEY_LEN);
 
-    memcpy_s(player.tokenKey, CONFIG_TOKENKEY_LEN, arr[1].as_string().c_str(), CONFIG_TOKENKEY_LEN);
-    player.SessionFK = static_cast<__int8>(std::stoi(arr[0].as_string())); // encKey
+    std::string key = "session:" + std::to_string(accountNo);
+
+    std::string tokenKey = HgetSync(*gRedisClient, key, "sessionToken");
+    std::string encodeKey = HgetSync(*gRedisClient, key, "fixedKey");
+
+    if (encodeKey.empty() || tokenKey.empty())
+    {
+        return eRedisResult::Redis_No_Data;
+    }
+
+    RT_ASSERT(tokenKey.size() == CONFIG_TOKENKEY_LEN);
+
+    player.SessionFK = static_cast<__int8>(std::stoi(encodeKey));
+    memcpy_s(player.tokenKey, CONFIG_TOKENKEY_LEN, tokenKey.c_str(), CONFIG_TOKENKEY_LEN);
     return eRedisResult::Redis_Success;
 }
 
@@ -512,10 +521,11 @@ void ChattingServer::chatMessageProc(Message &msg, Player &player)
 
 void ChattingServer::contentsThread()
 {
-    cpp_redis::client client;
-    gRedisClient = &client;
+    
+    cpp_redis::client Client;
+    gRedisClient = &Client;
+    gRedisClient->connect(CONFIG_REDIS_IP, CONFIG_REDIS_PORT);
 
-    gRedisClient->connect();
     DWORD retval;
     while (1)
     {

@@ -373,15 +373,6 @@ void SSL_CLoginServer::PacketProc_LoginAuth(ull SessionID, CMessage *msg)
     msg->GetData(ID, sizeof(WCHAR) * ID_LEN);
     msg->GetData(PW, sizeof(WCHAR) * Password_LEN);
 
-
-    auto ramda = [](cpp_redis::reply &r)
-    {
-        if (r.is_error())
-        {
-            CSystemLog::GetInstance()->Log(L"Redis", en_LOG_LEVEL::ERROR_Mode,
-                                           L"hmset failed: %S", r.error().c_str());
-        }
-    };
     // 로그인 성공시 accountNo 초기화.
     InterlockedIncrement64(&_loginTryTPS);
     InterlockedIncrement64(&_DB_ReqCnt);
@@ -419,18 +410,13 @@ void SSL_CLoginServer::PacketProc_LoginAuth(ull SessionID, CMessage *msg)
 
         }
         // 이부분에서 Redis에 등록!
-        enCodeKey = rand() % 256;
-        //BCryptGenRandom 함수가 성공하면 STATUS_SUCCESS 입니다.
-        BCryptGenRandom(nullptr, (BYTE *)tokenKey, 20, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
-
-        std::vector<std::pair<std::string, std::string>> fields = {
-            {"tokenKey", std::string(tokenKey, 20)},
-            {"encKey", std::to_string(enCodeKey)}};
+        enCodeKey = rand() % 255 + 1;
+        makeToken(tokenKey);
         std::string key = "session:" + std::to_string(accountNo);
 
-        redisClient->hmset(key, fields, ramda);
-        redisClient->expire(key, 60, ramda);
-        redisClient->sync_commit(std::chrono::milliseconds(500));
+        redisClient->hmset(key, {{"sessionToken", tokenKey}, {"fixedKey", std::to_string(enCodeKey)}});
+        redisClient->expire(key, 60);
+        redisClient->sync_commit();
     }
     else
     {
@@ -493,6 +479,14 @@ BYTE SSL_CLoginServer::WaitDB(WCHAR *ID, WCHAR *Password, int& outAccountNo)
         }
     }
     return dfLOGIN_DB_OK;
+}
+
+void SSL_CLoginServer::makeToken(char *buffer)
+{
+    for (int i =0; i <20; ++i)
+    {
+        buffer[i] =  'a' + rand() % 25;
+    }
 }
 
 bool SSL_CLoginServer::OnAccept(ull SessionID, SOCKADDR_IN &addr)
