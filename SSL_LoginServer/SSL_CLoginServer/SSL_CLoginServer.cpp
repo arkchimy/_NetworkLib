@@ -387,7 +387,8 @@ void SSL_CLoginServer::PacketProc_LoginAuth(ull SessionID, CMessage *msg)
             auto waitIter = _SessionID_wait_hash.find(SessionID);
             if (waitIter == _SessionID_wait_hash.end())
             {
-                __debugbreak();
+                //상대가 먼저 끊거나 내가 끊음.
+                return;
             }
             stWaitSession *waitSession = waitIter->second;
             addr = waitSession->_addr;
@@ -400,6 +401,8 @@ void SSL_CLoginServer::PacketProc_LoginAuth(ull SessionID, CMessage *msg)
             auto authIter = _SessionID_auth_hash.find(SessionID);
             if ( authIter != _SessionID_auth_hash.end())
             {
+                // 2번 인증하는 공격
+                return;
                 __debugbreak();
             }
             stAuthSession *authSession = static_cast<stAuthSession *>(_authSessionPool.Alloc());
@@ -425,6 +428,8 @@ void SSL_CLoginServer::PacketProc_LoginAuth(ull SessionID, CMessage *msg)
         auto waitIter = _SessionID_wait_hash.find(SessionID);
         if (waitIter == _SessionID_wait_hash.end())
         {
+            // 상대가 먼저 끊거나 내가 끊음.
+            return;
             __debugbreak();
         }
         stWaitSession *waitSession = waitIter->second;
@@ -454,9 +459,9 @@ BYTE SSL_CLoginServer::WaitDB(WCHAR *ID, WCHAR *Password, int& outAccountNo)
         db.Query("SELECT * FROM Account Where id = %s AND pw = %s ", stRow, idA, pwA);
         if (stRow.Fetch())
         {
-            accountNo = atoi(stRow.GetValue("AccountNo"));
-            std::string ID = stRow.GetValue("ID");
-            std::string PW = stRow.GetValue("PW");
+            accountNo = atoi(stRow.GetValue("accountno"));
+            std::string ID = stRow.GetValue("id");
+            std::string PW = stRow.GetValue("pw");
 
             //printf("AcccountNo : %d , ID : %s , PW : %s \n", accountNo, ID.c_str(), PW.c_str());
             outAccountNo = accountNo;
@@ -557,7 +562,7 @@ void SSL_CLoginServer::OnSend(ull SessionID, CMessage *msg)
     InterlockedIncrement64(&_sendTPS);
     if (msg->_bLastMessage == false)
         return;
-    Disconnect(SessionID);
+    //Disconnect(SessionID);
 }
 
 

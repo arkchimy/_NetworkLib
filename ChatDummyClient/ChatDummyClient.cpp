@@ -99,7 +99,7 @@ struct PktLS_ResAuth
 };
 #pragma pack(pop)
 
-static constexpr int  MAIN_LOOP_CNT = 100;
+static constexpr int  MAIN_LOOP_CNT = 1000000;
 static constexpr WORD LS_REQ_AUTH   = 101;
 static constexpr WORD LS_RES_AUTH   = 102;
 static constexpr BYTE LS_RESULT_OK  = 1;
@@ -178,6 +178,8 @@ SOCKET ChatDummyClient::connectToServer(const char *ip, __int16 port)
 {
     SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == INVALID_SOCKET) return INVALID_SOCKET;
+    linger lingerData{1,0};
+    setsockopt(sock, SOL_SOCKET, SO_LINGER, (const char *)&lingerData, sizeof(lingerData));
 
     SOCKADDR_IN addr{0};
     addr.sin_family = AF_INET;
@@ -199,7 +201,8 @@ bool ChatDummyClient::loginServerFlow(__int64 botIdx, LoginInfo &outInfo)
 {
     SOCKET sock = connectToServer(mLoginServerIP, mLoginServerPort);
     if (sock == INVALID_SOCKET) return false;
-
+    linger lingerData{1, 0};
+    setsockopt(sock, SOL_SOCKET, SO_LINGER, (const char *)&lingerData, sizeof(lingerData));
     SSL *ssl = SSL_new(mSslCtx);
     if (!ssl) { closesocket(sock); return false; }
 
@@ -320,7 +323,8 @@ bool ChatDummyClient::authFlow(SOCKET sock, __int32 &seqNum, __int8 &outX, __int
 bool ChatDummyClient::mainLoop(SOCKET sock, __int32 &seqNum, __int8 &sectorX, __int8 &sectorY,
                                int &pendingChat, const wchar_t *myNickname)
 {
-    for (int i = 0; i < MAIN_LOOP_CNT; ++i)
+    int randLoop = rand() % MAIN_LOOP_CNT;
+    for (int i = 0; i < randLoop; ++i)
     {
         // CS_MOVE
         {
@@ -345,7 +349,7 @@ bool ChatDummyClient::mainLoop(SOCKET sock, __int32 &seqNum, __int8 &sectorX, __
             sectorY = newY;
             mMoveCnt.fetch_add(1, std::memory_order_relaxed);
         }
-
+        Sleep(0);
         // CS_CHAT
         {
             PktCS_Chat pkt{};
@@ -362,7 +366,7 @@ bool ChatDummyClient::mainLoop(SOCKET sock, __int32 &seqNum, __int8 &sectorX, __
             mChatCnt.fetch_add(1, std::memory_order_relaxed);
             ++pendingChat;
         }
-
+        Sleep(0);
         pendingChat -= drainRecv(sock, myNickname);
     }
     return true;
