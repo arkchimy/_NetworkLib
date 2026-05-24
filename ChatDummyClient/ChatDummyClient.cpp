@@ -323,51 +323,86 @@ bool ChatDummyClient::authFlow(SOCKET sock, __int32 &seqNum, __int8 &outX, __int
 bool ChatDummyClient::mainLoop(SOCKET sock, __int32 &seqNum, __int8 &sectorX, __int8 &sectorY,
                                int &pendingChat, const wchar_t *myNickname)
 {
-    int randLoop = rand() % MAIN_LOOP_CNT;
-    for (int i = 0; i < randLoop; ++i)
+    static constexpr int BATCH = 100;
+    int totalLoops = rand() % MAIN_LOOP_CNT;
+
+    for (int i = 0; i < totalLoops; )
     {
-        // CS_MOVE
+        int batchSize = min(BATCH, totalLoops - i);
+        int pending   = 0;
+
+        // ── 1단계: BATCH개 송신 ──────────────────────────────
+        for (int j = 0; j < batchSize; ++j)
         {
-            __int8 newX, newY;
-            do
+            // CS_MOVE
             {
-                newX = (__int8)(rand() % 50);
-                newY = (__int8)(rand() % 50);
-            } while (newX == sectorX && newY == sectorY);
+                __int8 newX, newY;
+                do
+                {
+                    newX = (__int8)(rand() % 50);
+                    newY = (__int8)(rand() % 50);
+                } while (newX == sectorX && newY == sectorY);
 
-            PktCS_Move pkt{};
-            pkt.hdr.Len     = static_cast<__int16>(sizeof(PktCS_Move) - sizeof(PktHeader));
-            pkt.hdr.RandKey = '\xFF';
-            pkt.type        = static_cast<__int16>(ePacketType::CS_MOVE);
-            pkt.seqNum      = seqNum;
-            pkt.sectorX     = newX;
-            pkt.sectorY     = newY;
+                PktCS_Move pkt{};
+                pkt.hdr.Len     = static_cast<__int16>(sizeof(PktCS_Move) - sizeof(PktHeader));
+                pkt.hdr.RandKey = '\xFF';
+                pkt.type        = static_cast<__int16>(ePacketType::CS_MOVE);
+                pkt.seqNum      = seqNum;
+                pkt.sectorX     = newX;
+                pkt.sectorY     = newY;
 
-            if (!safeSend(sock, (char *)&pkt, sizeof(pkt))) return false;
-            seqNum++;
-            sectorX = newX;
-            sectorY = newY;
-            mMoveCnt.fetch_add(1, std::memory_order_relaxed);
+                if (!safeSend(sock, (char *)&pkt, sizeof(pkt))) return false;
+                seqNum++;
+                sectorX = newX;
+                sectorY = newY;
+                mMoveCnt.fetch_add(1, std::memory_order_relaxed);
+            }
+
+            // CS_CHAT
+            {
+                PktCS_Chat pkt{};
+                pkt.hdr.Len     = static_cast<__int16>(sizeof(PktCS_Chat) - sizeof(PktHeader));
+                pkt.hdr.RandKey = '\xFF';
+                pkt.type        = static_cast<__int16>(ePacketType::CS_CHAT);
+                pkt.seqNum      = seqNum;
+                pkt.msgLen      = 2;
+                pkt.msg[0]      = L'H';
+                pkt.msg[1]      = L'i';
+
+                if (!safeSend(sock, (char *)&pkt, sizeof(pkt))) return false;
+                seqNum++;
+                mChatCnt.fetch_add(1, std::memory_order_relaxed);
+                ++pending;
+            }
         }
-        Sleep(0);
-        // CS_CHAT
+
+        // ── 2단계: BATCH개 전부 수신될 때까지 블로킹 대기 ─────
+        while (pending > 0)
         {
-            PktCS_Chat pkt{};
-            pkt.hdr.Len     = static_cast<__int16>(sizeof(PktCS_Chat) - sizeof(PktHeader));
-            pkt.hdr.RandKey = '\xFF';
-            pkt.type        = static_cast<__int16>(ePacketType::CS_CHAT);
-            pkt.seqNum      = seqNum;
-            pkt.msgLen      = 2;
-            pkt.msg[0]      = L'H';
-            pkt.msg[1]      = L'i';
+            PktHeader hdr;
+            if (!safeRecv(sock, (char *)&hdr, sizeof(hdr))) return false;
+            if (hdr.Len <= 0 || hdr.Len > 2048)             return false;
 
-            if (!safeSend(sock, (char *)&pkt, sizeof(pkt))) return false;
-            seqNum++;
-            mChatCnt.fetch_add(1, std::memory_order_relaxed);
-            ++pendingChat;
+            char payload[2048]{};
+            if (!safeRecv(sock, payload, hdr.Len))           return false;
+
+            __int16 type;
+            memcpy(&type, payload, sizeof(type));
+
+            if (static_cast<ePacketType>(type) == ePacketType::SC_CHAT)
+            {
+                wchar_t rcvNick[20]{};
+                memcpy(rcvNick, payload + sizeof(__int16), sizeof(wchar_t) * 20);
+                if (wcscmp(rcvNick, myNickname) == 0)
+                {
+                    mRecvChatCnt.fetch_add(1, std::memory_order_relaxed);
+                    --pending;
+                }
+                // 다른 유저 채팅이 끼어들면 읽고 버림
+            }
         }
-        Sleep(0);
-        pendingChat -= drainRecv(sock, myNickname);
+
+        i += batchSize;
     }
     return true;
 }
@@ -444,13 +479,6 @@ void ChatDummyClient::clientThread()
         int pendingChat = 0;
         if (!mainLoop(sock, seqNum, sectorX, sectorY, pendingChat, myNickname))
             mErrCnt.fetch_add(1, std::memory_order_relaxed);
-
-        while (pendingChat > 0)
-        {
-            int got = drainRecv(sock, myNickname);
-            if (got > 0) pendingChat -= got;
-            else Sleep(1);
-        }
 
         closesocket(sock);
     }
