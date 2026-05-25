@@ -98,9 +98,6 @@ class ChattingServer : public NetworkLib
     std::shared_mutex mQLock;
     std::queue<Message *> mContentsQ;
 
-    std::shared_mutex mDeferredQLock;
-    std::queue<Message *> mDeferredReleaseQ;
-
     //std::shared_mutex mPlayerMapLock;
     std::map<__int64, Player *> mPlayerMap;
 
@@ -108,7 +105,6 @@ class ChattingServer : public NetworkLib
     Sector mSectors[50][50];
 
     __int64 mContentsTPS;
-    size_t mDeferredReleaseQSize;
     size_t mContentsQSize;
 
     uint64_t mPacketTypeTPS[static_cast<__int64>(ePacketType::CHAT_MAX)];

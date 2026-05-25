@@ -13,7 +13,6 @@ namespace network
 ChattingServer::ChattingServer()
     : hEchoEvent(INVALID_HANDLE_VALUE),
       mContentsTPS(0),
-      mDeferredReleaseQSize(0),
       mContentsQSize(0),
       mUserCnt(0),
       mPacketTypeTPS{0}
@@ -274,6 +273,11 @@ void ChattingServer::aroundLockAndSendMsg(__int16 x, __int16 y, wchar_t Nickname
         for (auto hash : mSectors[pos[idx].first][pos[idx].second].mPlayers)
         {
             Player &player = *hash.second;
+            // Why : 과연 로직의 느림때문일까 측정하기위한 방법.
+            //if (wcscmp(player.Nickname, Nickname) != 0)
+            //{
+            //    continue;
+            //}
             Message *msg = MY_NEW Message();
             msg->InitMessage(player.SessionID.Value, '\xFF');
             makeChatMessage(player.SessionFK, player.SessionID.Value, Nickname, MessageLen, buffer, *msg);
@@ -695,7 +699,6 @@ std::ostream &operator<<(std::ostream &out, const ChattingServer &server)
     printRow(out, hConsole, "Sessions", server.GetSessionCount(), COLOR_WHITE);
     printRow(out, hConsole, "Users", server.mUserCnt, COLOR_WHITE);
     printRow(out, hConsole, "ContentsQ", server.mContentsQSize, server.mContentsQSize > 0 ? COLOR_RED : COLOR_GREEN);
-    printRow(out, hConsole, "DeferredQ", server.mDeferredReleaseQSize, server.mDeferredReleaseQSize > 0 ? COLOR_YELLOW : COLOR_GREEN);
     printRow(out, hConsole, "Disconnect", server.GetDisConnectCount(), COLOR_YELLOW);
 
     SetConsoleTextAttribute(hConsole, COLOR_GRAY);
