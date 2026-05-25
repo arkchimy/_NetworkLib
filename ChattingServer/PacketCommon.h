@@ -68,6 +68,7 @@ enum class ePacketType : __int16
     //  __int16 MessageLen
     //  wchar_t Message[MessageLen]
     //}
+    CHAT_MAX,
 
     //------------------------------------------------------
     // Chatting Server Only   내부에서만 씀

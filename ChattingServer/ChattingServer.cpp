@@ -1,9 +1,7 @@
-
 #include <iomanip>
 #include <shared_mutex>
 
 #include "ChattingServer.h"
-#include "PacketCommon.h"
 
 #include <timeapi.h>
 #pragma comment(lib, "winmm.lib")
@@ -17,7 +15,8 @@ ChattingServer::ChattingServer()
       mContentsTPS(0),
       mDeferredReleaseQSize(0),
       mContentsQSize(0),
-      mUserCnt(0)
+      mUserCnt(0),
+      mPacketTypeTPS{0}
 {
     hEchoEvent = CreateEvent(nullptr, false, false, nullptr);
     mContentsThread = std::thread(&ChattingServer::contentsThread, this);
@@ -132,13 +131,13 @@ void ChattingServer::packetProc(Message &msg)
         // 맵에서 찾지 못했음. 내부에서 msg 반환
         return;
     }
-    Player& player = *playerNullTest;
-  
+    Player &player = *playerNullTest;
+
     if (isValidateSeqNumber(msg, player) == false)
     {
         return;
     }
-
+    ++mPacketTypeTPS[wType];
 
     switch (type)
     {
@@ -211,8 +210,8 @@ void ChattingServer::moveSector(__int64 sessionID, const __int8 beforeX, const _
 {
     __int16 before = beforeX * 50 + beforeY;
     __int16 after = x * 50 + y;
-    Sector &beforeSector = sectors[beforeX][beforeY];
-    Sector &afterSector = sectors[x][y];
+    Sector &beforeSector = mSectors[beforeX][beforeY];
+    Sector &afterSector = mSectors[x][y];
 
     if (before < after)
     {
@@ -272,7 +271,7 @@ void ChattingServer::aroundLockAndSendMsg(__int16 x, __int16 y, wchar_t Nickname
     }
     for (int idx = 0; idx < vecSize; ++idx)
     {
-        for (auto hash : sectors[pos[idx].first][pos[idx].second].mPlayers)
+        for (auto hash : mSectors[pos[idx].first][pos[idx].second].mPlayers)
         {
             Player &player = *hash.second;
             Message *msg = MY_NEW Message();
@@ -282,6 +281,7 @@ void ChattingServer::aroundLockAndSendMsg(__int16 x, __int16 y, wchar_t Nickname
             //           << std::setw(10) << "AccounNo :" << std::setw(8) << player.accountNo << "\n";
             RT_ASSERT(player.bAuth == true);
             sendPost(player.SessionID, *msg);
+            ++mPacketTypeTPS[static_cast<__int64>(ePacketType::SC_CHAT)];
         }
     }
 }
@@ -386,6 +386,7 @@ void ChattingServer::loginProc(Message &msg, Player &player)
     // std::cout <<std::right << std::setw(10) << "loginProc" << std::setw(8) << player.SessionID.Value
     //           << std::setw(10) << "AccounNo :" << std::setw(8) << accountNo << "\n";
     sendPost(player.SessionID, msg);
+    ++mPacketTypeTPS[static_cast<__int64>(ePacketType::SC_LOGIN)];
 }
 void ChattingServer::authProc(Message &msg, Player &player)
 {
@@ -426,7 +427,7 @@ void ChattingServer::authProc(Message &msg, Player &player)
     player.sectorY = SectorY;
     player.bAuth = true;
     {
-        Sector &sector = sectors[SectorX][SectorY];
+        Sector &sector = mSectors[SectorX][SectorY];
         // std::lock_guard<std::shared_mutex> lock(sector.mMutex);
         auto iter = sector.mPlayers.find(player.SessionID.Value);
         RT_ASSERT(iter == sector.mPlayers.end());
@@ -436,6 +437,7 @@ void ChattingServer::authProc(Message &msg, Player &player)
     // std::cout << std::setw(10) << "authProc" << std::setw(8) << player.SessionID.Value
     //           << std::setw(10) << "AccounNo :" << std::setw(8) << player.accountNo << "\n";
     sendPost(player.SessionID, msg);
+    ++mPacketTypeTPS[static_cast<__int64>(ePacketType::SC_AUTH)];
 }
 
 void ChattingServer::moveSectorProc(Message &msg, Player &player)
@@ -587,7 +589,7 @@ void ChattingServer::chatProc(Message &msg, __int16 wType)
 
 void ChattingServer::chatPlayerAlloc(Message &msg)
 {
-    Player& player = *MY_NEW Player();
+    Player &player = *MY_NEW Player();
     ull sessionID = msg.GetOwnerID();
 
     SOCKADDR_IN addr{0};
@@ -616,8 +618,8 @@ void ChattingServer::chatPlayerDelete(Message &msg)
     {
         __int8 x = player.sectorX;
         __int8 y = player.sectorY;
-        auto iter2 = sectors[x][y].mPlayers.find(sessionID);
-        sectors[x][y].mPlayers.erase(iter2);
+        auto iter2 = mSectors[x][y].mPlayers.find(sessionID);
+        mSectors[x][y].mPlayers.erase(iter2);
     }
     mPlayerMap.erase(sessionID);
     MY_DELETE & msg;
@@ -650,11 +652,15 @@ std::ostream &operator<<(std::ostream &out, const ChattingServer &server)
     thread_local __int64 beforeRecv;
     thread_local __int64 beforeSend;
     thread_local __int64 beforeContent;
+    thread_local uint64_t beforePacketTypeTPS[static_cast<__int64>(ePacketType::CHAT_MAX)];
 
     __int64 currentAccept = server.GetAcceptCount();
     __int64 currentRecv = server.GetRecvCount();
     __int64 currentSend = server.GetSendCount();
     __int64 currentContent = server.mContentsTPS;
+
+    uint64_t currentPacketTypeTPS[static_cast<__int64>(ePacketType::CHAT_MAX)];
+    memcpy(currentPacketTypeTPS, server.mPacketTypeTPS, sizeof(server.mPacketTypeTPS));
 
     __int64 tpsAccept = currentAccept - beforeAccept;
     __int64 tpsRecv = currentRecv - beforeRecv;
@@ -672,7 +678,16 @@ std::ostream &operator<<(std::ostream &out, const ChattingServer &server)
     printRow(out, hConsole, "Send", tpsSend, COLOR_GREEN);
     printRow(out, hConsole, "Contents", tpsContent, COLOR_GREEN);
     printRow(out, hConsole, "AccTotal", currentAccept, COLOR_GRAY);
+    out << "\n";
 
+    out << "[ Packet TPS ]\n";
+    printRow(out, hConsole, "CS_LOGIN", currentPacketTypeTPS[0] - beforePacketTypeTPS[0], COLOR_GRAY);
+    printRow(out, hConsole, "SC_LOGIN", currentPacketTypeTPS[1] - beforePacketTypeTPS[1], COLOR_GRAY);
+    printRow(out, hConsole, "CS_AUTH", currentPacketTypeTPS[2] - beforePacketTypeTPS[2], COLOR_GRAY);
+    printRow(out, hConsole, "SC_AUTH", currentPacketTypeTPS[3] - beforePacketTypeTPS[3], COLOR_GRAY);
+    printRow(out, hConsole, "CS_MOVE", currentPacketTypeTPS[4] - beforePacketTypeTPS[4], COLOR_GRAY);
+    printRow(out, hConsole, "CS_CHAT", currentPacketTypeTPS[5] - beforePacketTypeTPS[5], COLOR_GRAY);
+    printRow(out, hConsole, "SC_CHAT", currentPacketTypeTPS[6] - beforePacketTypeTPS[6], COLOR_GRAY);
     out << "\n";
 
     SetConsoleTextAttribute(hConsole, COLOR_WHITE);
@@ -691,6 +706,7 @@ std::ostream &operator<<(std::ostream &out, const ChattingServer &server)
     beforeSend = currentSend;
     beforeContent = currentContent;
 
+    memcpy(beforePacketTypeTPS, currentPacketTypeTPS, sizeof(currentPacketTypeTPS));
     return out;
 }
 

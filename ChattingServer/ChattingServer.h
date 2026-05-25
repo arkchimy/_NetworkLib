@@ -7,6 +7,7 @@
 
 #include "AcceptEx_IOCP_NetworkLib/AcceptEx_IOCP_NetworkLib.h"
 #include "ChattingServerConfig.h"
+#include "PacketCommon.h"
 
 namespace network
 {
@@ -104,10 +105,12 @@ class ChattingServer : public NetworkLib
     std::map<__int64, Player *> mPlayerMap;
 
     size_t mUserCnt;
-    Sector sectors[50][50];
+    Sector mSectors[50][50];
 
     __int64 mContentsTPS;
     size_t mDeferredReleaseQSize;
     size_t mContentsQSize;
+
+    uint64_t mPacketTypeTPS[static_cast<__int64>(ePacketType::CHAT_MAX)];
 };
 } // namespace network
