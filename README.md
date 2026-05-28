@@ -9,7 +9,7 @@ C++ IOCP 기반 네트워크 라이브러리를 직접 구현하고,
 
 - 동접 **1,000명** 기준 Content TPS **32만 ~ 45만** 달성
 - Interlocked CAS를 활용한 **Lock-free Send 동기화** 구현
-- Redis 토큰 기반 **Stateless 인증 구조** 설계  
+- Redis 토큰 기반 **인증 구조** 설계  
   → ChatServer가 LoginServer 없이 독립적으로 인증 처리
 
 ---
