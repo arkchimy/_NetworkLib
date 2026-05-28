@@ -88,7 +88,7 @@ Worker Thread가 직접 WSASend를 호출하되,
 - **네트워크**: WinSock2, IOCP
 - **보안**: OpenSSL (TLS)
 - **DB**: MySQL, Redis
-- **동기화**: Interlocked CAS, CRITICAL_SECTION
+- **동기화**: Interlocked CAS, std::shared_mutex
 
 ---
 
